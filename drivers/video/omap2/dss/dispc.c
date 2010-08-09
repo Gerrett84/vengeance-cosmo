@@ -2343,7 +2343,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 		}
 
 	if (scale_y) {
-		fir_vinc = (1024 * orig_height) / out_height;
+		fir_vinc = 1024 * (orig_height - 1) / (out_height - 1);
 		if (fir_vinc > 4095)
 			fir_vinc = 4095;
 		vfir = get_scaling_coef(orig_height, out_height, 0,
