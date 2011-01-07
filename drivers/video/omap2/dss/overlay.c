@@ -1075,6 +1075,8 @@ void dss_init_overlays(struct platform_device *pdev)
 		BUG_ON(ovl == NULL);
 
 		mutex_init(&ovl->lock);
+		mutex_lock(&ovl->lock);
+
 		switch (i) {
 		case 0:
 			ovl->name = "gfx";
@@ -1132,12 +1134,13 @@ void dss_init_overlays(struct platform_device *pdev)
 			ovl->info.global_alpha = 255;
 			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_0;
 			break;
-
 		}
 
 		ovl->info.min_x_decim = ovl->info.min_y_decim = 1;
 		ovl->info.max_x_decim = ovl->info.max_y_decim =
 			cpu_is_omap44xx() ? 16 : 1;
+
+		ovl->info_dirty = true;
 
 		ovl->set_manager = &omap_dss_set_manager;
 		ovl->unset_manager = &omap_dss_unset_manager;
@@ -1146,16 +1149,14 @@ void dss_init_overlays(struct platform_device *pdev)
 		ovl->wait_for_go = &dss_ovl_wait_for_go;
 
 		omap_dss_add_overlay(ovl);
+		dispc_overlays[i] = ovl;
 
 		r = kobject_init_and_add(&ovl->kobj, &overlay_ktype,
 				&pdev->dev.kobj, "overlay%d", i);
-
-		if (r) {
+		if (r)
 			DSSERR("failed to create sysfs file\n");
-			continue;
-		}
 
-		dispc_overlays[i] = ovl;
+		mutex_unlock(&ovl->lock);
 	}
 
 #ifdef L4_EXAMPLE
