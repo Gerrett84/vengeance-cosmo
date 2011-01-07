@@ -1088,6 +1088,9 @@ void dss_init_overlays(struct platform_device *pdev)
 				OMAP_DSS_COLOR_VID_OMAP2;
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
+			ovl->info.yuv2rgb_conv.type =
+				OMAP_DSS_COLOR_CONV_BT601_5_LR;
+			ovl->info.yuv2rgb_conv.dirty = true;
 			ovl->info.global_alpha = 255;
 			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_3;
 			break;
@@ -1100,6 +1103,9 @@ void dss_init_overlays(struct platform_device *pdev)
 				OMAP_DSS_COLOR_VID_OMAP2;
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
+			ovl->info.yuv2rgb_conv.type =
+				OMAP_DSS_COLOR_CONV_BT601_5_LR;
+			ovl->info.yuv2rgb_conv.dirty = true;
 			ovl->info.global_alpha = 255;
 			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_2;
 			break;
@@ -1109,6 +1115,9 @@ void dss_init_overlays(struct platform_device *pdev)
 			ovl->supported_modes = OMAP_DSS_COLOR_VID3_OMAP3;
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
+			ovl->info.yuv2rgb_conv.type =
+				OMAP_DSS_COLOR_CONV_BT601_5_LR;
+			ovl->info.yuv2rgb_conv.dirty = true;
 			ovl->info.global_alpha = 255;
 			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_1;
 			break;
