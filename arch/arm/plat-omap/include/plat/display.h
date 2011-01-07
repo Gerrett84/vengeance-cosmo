@@ -479,13 +479,6 @@ struct omap_video_timings {
 	u16 vsa;
 };
 
-struct omap_color_conv_coef {
-	int  ry,  rcr,  rcb;
-	int  gy,  gcr,  gcb;
-	int  by,  bcr,  bcb;
-	int  full_range;
-};
-
 /* Weight coef are set as value * 1000 (if coef = 1 it is set to 1000) */
 struct omap_dss_color_weight_coef {
 	int rr, rg, rb;
@@ -499,6 +492,7 @@ struct omap_dss_yuv2rgb_conv {
 	bool dirty;
 };
 
+/* Weight coef are set as value * 1000 (if coef = 1 it is set to 1000) */
 #ifdef CONFIG_MACH_LGE_COSMO_DOMASTIC
 #define LGE_FW_TDMB
 #endif // CONFIG_MACH_LGE_COSMO_DOMASTIC
@@ -1002,9 +996,6 @@ void dispc_go(enum omap_channel channel);
 int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout);
 int omap_dispc_wait_for_irq_interruptible_timeout(u32 irqmask,
 			unsigned long timeout);
-void dispc_get_default_color_conv_coef(struct omap_color_conv_coef *ct);
-void dispc_set_color_conv_coef(enum omap_plane plane,
-		const struct omap_color_conv_coef *ct);
 
 #define to_dss_driver(x) container_of((x), struct omap_dss_driver, driver)
 #define to_dss_device(x) container_of((x), struct omap_dss_device, dev)
