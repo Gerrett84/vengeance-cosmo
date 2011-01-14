@@ -1130,7 +1130,7 @@ void dispc_restore_context(void)
 	 * enable last so IRQs won't trigger before
 	 * the context is fully restored
 	 */
-	RR(IRQENABLE);
+	_omap_dispc_set_irqs();
 }
 
 #undef SR
@@ -4605,7 +4605,6 @@ int omap_dispc_unregister_isr(omap_dispc_isr_t isr, void *arg, u32 mask)
 		else
 			DSSINFO("unregistering DSS isr with mainclk off\n");
 	}
-
 
 	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 
