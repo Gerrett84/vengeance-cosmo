@@ -1,16 +1,12 @@
 /*
+ * ALSA SoC OMAP ABE driver
  *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
+ * Author:	Laurent Le Faucheur <l-le-faucheur@ti.com>
+ * 		Liam Girdwood <lrg@slimlogic.co.uk>
  *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2010-2011 Texas Instruments Incorporated,
- * All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,42 +14,8 @@
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * The full GNU General Public License is included in this distribution
- * in the file called LICENSE.GPL.
- *
- * BSD LICENSE
- *
- * Copyright(c) 2010-2011 Texas Instruments Incorporated,
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *   distribution.
- * * Neither the name of Texas Instruments Incorporated nor the names of
- *   its contributors may be used to endorse or promote products derived
- *   from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ * along with this program; if not, write to the Free Software`
+ * 02110-1301 USA
  */
 #ifndef _ABE_FW_H_
 #define _ABE_FW_H_
@@ -93,7 +55,7 @@ typedef struct {
 	unsigned wrpt:7;
 	unsigned reserved2:1;
 	unsigned badd:12;	/* second 32bits word of the descriptor */
-	unsigned iter:7;	/* iteration field overlaps 16-bit boundary */
+	unsigned iter:7;	/* iteration field overlaps the 16 bits boundary */
 	unsigned srcid:6;
 	unsigned destid:6;
 	unsigned desen:1;
@@ -188,8 +150,8 @@ typedef struct {
  * DMEM indexes of the router uplink paths
  * uint8 dmem_router_index [8]
  */
-
-/* #define dmem_router_index */
+// OC: TBD ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//#define dmem_router_index
 /*
  * analog control circular buffer commands to Phoenix
  * structure {
@@ -215,8 +177,8 @@ typedef struct {
  * uint16 dmem_debug_trace_mask
  * each bit of this word enables a type a trace in the debug circular buffer
  */
-
-/* #define dmem_debug_trace_mask */
+// OC: TBD ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//#define dmem_debug_trace_mask
 /*
  * DEBUG circular buffer
  * structure {
@@ -306,8 +268,7 @@ typedef struct {
  */
 /*
  * PHOENIX OFFSET in SMEM
- * used to subtract a DC offset on the headset path
- * (power consumption optimization)
+ * used to subtract a DC offset on the headset path (power consumption optimization)
  */
 /* OC: exact usage to be detailled */
 #define smem_phoenix_offset	S_PhoenixOffset_ADDR
@@ -338,8 +299,8 @@ typedef struct {
  * 18 = TOTAL
  */
 #if 0
-#define smem_g0	S_GTarget_ADDR		/* [9] 2 gains in 1 SM address */
-#define smem_g1	S_GCurrent_ADDR		/* [9] 2 gains in 1 SM address */
+#define smem_g0	S_GTarget_ADDR	// [9] 2 gains in 1 SM address
+#define smem_g1	S_GCurrent_ADDR	// [9] 2 gains in 1 SM address
 #endif
 /*
  * COEFFICIENTS AREA
@@ -376,7 +337,7 @@ typedef struct {
 #define mixer_sdt_offset 24
 #define mixer_vxrec_offset 26
 #define mixer_audul_offset 30
-#define btul_gains_offset 34
+#define gain_unused_offset 34
 /*
  * DMIC SRC 96->48
  * the filter is changed depending on the decimatio ratio used (16/25/32/40)

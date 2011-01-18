@@ -23,7 +23,6 @@
 #include <linux/platform_device.h>
 #include <linux/i2c.h>
 #include <linux/mfd/twl6040-codec.h>
-#include <linux/i2c/twl.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -45,8 +44,6 @@
 #ifdef CONFIG_SND_OMAP_SOC_HDMI
 #include "omap-hdmi.h"
 #endif
-
-#define TPS6130X_I2C_ADAPTER	1
 
 static int twl6040_power_mode;
 static int mcbsp_cfg;
@@ -211,27 +208,17 @@ static int mcbsp_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	struct snd_interval *channels = hw_param_interval(params,
                                        SNDRV_PCM_HW_PARAM_CHANNELS);
 	unsigned int be_id;
-	unsigned int val;
 
         be_id = rtd->dai_link->be_id;
 
-	switch (be_id) {
-	case OMAP_ABE_DAI_MM_FM:
+	if (be_id == OMAP_ABE_DAI_MM_FM)
 		channels->min = 2;
-		val = SNDRV_PCM_FORMAT_S32_LE;
-		break;
-	case OMAP_ABE_DAI_BT_VX:
+	else if (be_id == OMAP_ABE_DAI_BT_VX)
 		channels->min = 1;
-		val = SNDRV_PCM_FORMAT_S16_LE;
-		break;
-	default:
-		val = SNDRV_PCM_FORMAT_S16_LE;
-		break;
-	}
 
 	snd_mask_set(&params->masks[SNDRV_PCM_HW_PARAM_FORMAT -
-				    SNDRV_PCM_HW_PARAM_FIRST_MASK],
-		     val);
+	                            SNDRV_PCM_HW_PARAM_FIRST_MASK],
+	                            SNDRV_PCM_FORMAT_S16_LE);
 	return 0;
 }
 
@@ -324,7 +311,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"AFMR", NULL, "Aux/FM Stereo In"},
 };
 
-static int sdp4430_twl6040_init_hs(struct snd_soc_pcm_runtime *rtd)
+static int sdp4430_twl6040_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_codec *codec = rtd->codec;
 	int ret;
@@ -382,13 +369,6 @@ static int sdp4430_twl6040_init_hs(struct snd_soc_pcm_runtime *rtd)
 	rtd->pmdown_time = 500;
 
 	return ret;
-}
-
-static int sdp4430_twl6040_init_hf(struct snd_soc_pcm_runtime *rtd)
-{
-	/* wait 500 ms before switching of HF power */
-	rtd->pmdown_time = 500;
-	return 0;
 }
 
 /* TODO: make this a separate BT CODEC driver or DUMMY */
@@ -635,6 +615,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "twl6040-codec",
 
 		.ops = &sdp4430_mcpdm_ops,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = "Legacy DMIC",
@@ -649,6 +630,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "dmic-codec.0",
 
 		.ops = &sdp4430_dmic_ops,
+		.ignore_suspend = 1,
 	},
 
 /*
@@ -669,9 +651,10 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "twl6040-codec",
 
 		.no_pcm = 1, /* don't create ALSA pcm for this */
-		.init = sdp4430_twl6040_init_hs,
+		.init = sdp4430_twl6040_init,
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_DL1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_PDM_UL1,
@@ -688,6 +671,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_UL,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_PDM_DL2,
@@ -702,9 +686,9 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "twl6040-codec",
 
 		.no_pcm = 1, /* don't create ALSA pcm for this */
-		.init = sdp4430_twl6040_init_hf,
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_DL2,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_PDM_VIB,
@@ -721,6 +705,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_VIB,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_BT_VX,
@@ -738,6 +723,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.be_hw_params_fixup = mcbsp_be_hw_params_fixup,
 		.ops = &sdp4430_mcbsp_ops,
 		.be_id = OMAP_ABE_DAI_BT_VX,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_MM_EXT0,
@@ -790,6 +776,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.be_hw_params_fixup = dmic_be_hw_params_fixup,
 		.be_id = OMAP_ABE_DAI_DMIC0,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_DMIC1,
@@ -807,6 +794,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.be_hw_params_fixup = dmic_be_hw_params_fixup,
 		.be_id = OMAP_ABE_DAI_DMIC1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_DMIC2,
@@ -824,6 +812,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.be_hw_params_fixup = dmic_be_hw_params_fixup,
 		.be_id = OMAP_ABE_DAI_DMIC2,
+		.ignore_suspend = 1,
 	},
 };
 
@@ -840,8 +829,7 @@ static struct platform_device *sdp4430_snd_device;
 static int __init sdp4430_soc_init(void)
 {
 	struct i2c_adapter *adapter;
-	u8 gpoctl = 0;
-	int ret = 0;
+	int ret;
 
 	if (!machine_is_omap_4430sdp() && !machine_is_omap4_panda()) {
 		pr_debug("Not SDP4430 or PandaBoard!\n");
@@ -863,41 +851,24 @@ static int __init sdp4430_soc_init(void)
 	if (ret)
 		goto err;
 
-	/* enable tps6130x */
-	ret = twl_i2c_read_u8(TWL_MODULE_AUDIO_VOICE, &gpoctl,
-			      TWL6040_REG_GPOCTL);
-	if (ret)
-		goto err;
-
-	ret = twl_i2c_write_u8(TWL_MODULE_AUDIO_VOICE, gpoctl | TWL6040_GPO2,
-			       TWL6040_REG_GPOCTL);
-	if (ret)
-		goto err;
-
-	adapter = i2c_get_adapter(TPS6130X_I2C_ADAPTER);
-	if (!adapter) {
-		printk(KERN_ERR "can't get i2c adapter\n");
-		ret = -ENODEV;
-		goto adp_err;
-	}
+        adapter = i2c_get_adapter(1);
+        if (!adapter) {
+                printk(KERN_ERR "can't get i2c adapter\n");
+                return -ENODEV;
+        }
 
 	tps6130x_client = i2c_new_device(adapter, &tps6130x_hwmon_info);
 	if (!tps6130x_client) {
-		printk(KERN_ERR "can't add i2c device\n");
-		ret = -ENODEV;
-		goto tps_err;
-	}
+                printk(KERN_ERR "can't add i2c device\n");
+                return -ENODEV;
+        }
 
 	/* Only configure the TPS6130x on SDP4430 */
 	if (machine_is_omap_4430sdp())
 		sdp4430_tps6130x_configure();
 
-	return ret;
+	return 0;
 
-tps_err:
-	i2c_put_adapter(adapter);
-adp_err:
-	twl_i2c_write_u8(TWL_MODULE_AUDIO_VOICE, gpoctl, TWL6040_REG_GPOCTL);
 err:
 	printk(KERN_ERR "Unable to add platform device\n");
 	platform_device_put(sdp4430_snd_device);
