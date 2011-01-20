@@ -1588,11 +1588,8 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 		oc->pic_height = ovl->info.pic_height;
 		oc->color_mode = ovl->info.color_mode;
 
-		if (ovl->info.yuv2rgb_conv.dirty) {
+		if (ovl->info.yuv2rgb_conv.dirty)
 			oc->yuv2rgb_conv = &ovl->info.yuv2rgb_conv;
-			ovl->info.yuv2rgb_conv.dirty = false;
-		} else
-			oc->yuv2rgb_conv = NULL;
 
 		oc->rotation = ovl->info.rotation;
 		oc->rotation_type = ovl->info.rotation_type;
@@ -1840,11 +1837,8 @@ int omap_dss_wb_apply(struct omap_overlay_manager *mgr, struct omap_writeback *w
 		oc->max_y_decim = ovl->info.max_y_decim;
 		oc->pre_mult_alpha = ovl->info.pre_mult_alpha;
 
-		if (ovl->info.yuv2rgb_conv.dirty) {
+		if (ovl->info.yuv2rgb_conv.dirty)
 			oc->yuv2rgb_conv = &ovl->info.yuv2rgb_conv;
-			ovl->info.yuv2rgb_conv.dirty = false;
-		} else
-			oc->yuv2rgb_conv = NULL;
 
 		oc->replication =
 			dss_use_replication(dssdev, ovl->info.color_mode);
