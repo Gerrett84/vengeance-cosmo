@@ -204,20 +204,6 @@ struct platform_device cosmo_mtc_eta_log_device = {
 
 
 
-static struct pwm_vib_platform_data vib_data = {
-        .max_timeout            =       15000,
-        .active_low                     =       0,
-        .initial_vibrate        =       0,
-};
-
-static struct platform_device vib = {
-	.name   =	VIB_PWM_NAME,
-	.id		=	-1,
-	.dev    =	{
-		.platform_data  = &vib_data,
-	},
-};
-
 #if defined(CONFIG_TOUCHSCREEN_HUB_SYNAPTICS) || defined(CONFIG_TOUCHSCREEN_COSMO_SYNAPTICS) || defined(CONFIG_TOUCHSCREEN_COSMO_TM1709)
 #define HUB_TS_I2C_INT_GPIO   52
 
@@ -455,7 +441,6 @@ static struct platform_device *sdp4430_devices[] __initdata = {
 
     &cosmo_gps_gpio,
 
-	&vib,
 	&omap_kp_leds_device,
 	&omap_kp_device,
 
@@ -778,6 +763,8 @@ static struct twl4030_codec_audio_data twl6040_audio = {
 
 static struct twl4030_codec_vibra_data twl6040_vibra = {
 	.audio_mclk	= 38400000,
+	.max_timeout    = 15000,
+	.initial_vibrate = 0,
 };
 
 static struct twl4030_codec_data twl6040_codec = {
