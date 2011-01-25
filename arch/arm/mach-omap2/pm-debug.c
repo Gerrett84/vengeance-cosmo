@@ -34,6 +34,8 @@
 #include <plat/voltage.h>
 #include <plat/dmtimer.h>
 
+#include <mach/omap4-common.h>
+
 #include "prm.h"
 #include "cm.h"
 #include "pm.h"
@@ -44,6 +46,8 @@ u32 sleep_while_idle;
 u32 wakeup_timer_seconds;
 u32 wakeup_timer_milliseconds;
 u32 omap4_device_off_counter = 0;
+int pmd_clks_enable;
+int dpll_cascade_global_state;
 
 #define DUMP_PRM_MOD_REG(mod, reg)    \
 	regs[reg_count].name = #mod "." #reg; \
@@ -662,6 +666,119 @@ static int option_set(void *data, u64 val)
 
 DEFINE_SIMPLE_ATTRIBUTE(pm_dbg_option_fops, option_get, option_set, "%llu\n");
 
+static int pmd_clks_set(void *data, u64 val)
+{
+	int *option = data;
+
+	if (option != &pmd_clks_enable)
+		return -EINVAL;
+
+	if(cpu_is_omap44xx()) {
+		struct clk *l3_instr_ick, *l3_main_3_ick, *ocp_wp_noc_ick;
+
+		l3_instr_ick = clk_get(NULL, "l3_instr_ick");
+		l3_main_3_ick = clk_get(NULL, "l3_main_3_ick");
+		ocp_wp_noc_ick = clk_get(NULL, "ocp_wp_noc_ick");
+
+		/* enable PMD clocks */
+		if (!*option && val) {
+			clk_enable(l3_instr_ick);
+			clk_enable(l3_main_3_ick);
+			clk_enable(ocp_wp_noc_ick);
+
+			*option = val;
+		/* disable PMD clocks */
+		} else if (*option && !val) {
+			clk_disable(l3_instr_ick);
+			clk_disable(l3_main_3_ick);
+			clk_disable(ocp_wp_noc_ick);
+
+			*option = val;
+		}
+	}
+
+	return 0;
+}
+
+static int pmd_clks_get(void *data, u64 *val)
+{
+	int *option = data;
+
+	if (option != &pmd_clks_enable)
+		return -EINVAL;
+
+	*val = *option;
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(pm_debug_pmd_clks_fops, pmd_clks_get, pmd_clks_set,
+		"%llu\n");
+
+static int __init omap4_pmd_clks_init(void)
+{
+	struct clk *l3_instr_ick, *l3_main_3_ick, *ocp_wp_noc_ick;
+
+	l3_instr_ick = clk_get(NULL, "l3_instr_ick");
+	l3_main_3_ick = clk_get(NULL, "l3_main_3_ick");
+	ocp_wp_noc_ick = clk_get(NULL, "ocp_wp_noc_ick");
+
+#ifdef CONFIG_OMAP4_PMD_CLKS_ENABLE
+	pmd_clks_enable = 1;
+
+	if (!(l3_instr_ick->usecount))
+		clk_enable(l3_instr_ick);
+	if (!(l3_main_3_ick->usecount))
+		clk_enable(l3_main_3_ick);
+	if (!(ocp_wp_noc_ick->usecount))
+		clk_enable(ocp_wp_noc_ick);
+#else
+	pmd_clks_enable = 0;
+
+	if (l3_instr_ick->usecount)
+		clk_disable(l3_instr_ick);
+	if (l3_main_3_ick->usecount)
+		clk_disable(l3_main_3_ick);
+	if (ocp_wp_noc_ick->usecount)
+		clk_disable(ocp_wp_noc_ick);
+#endif
+
+	return 0;
+}
+
+static int dpll_cascading_set(void *data, u64 val)
+{
+	int *option = data;
+
+	if (option != &dpll_cascade_global_state)
+		return -EINVAL;
+
+	if (*option == 0 && val == 1) {
+		*option = val;
+		omap4_dpll_low_power_cascade_enter();
+	} else if (*option == 1 && val == 0) {
+		omap4_dpll_low_power_cascade_exit();
+		*option = val;
+	}
+
+	return 0;
+}
+
+static int dpll_cascading_get(void *data, u64 *val)
+{
+	int *option = data;
+
+	if (option != &dpll_cascade_global_state)
+		return -EINVAL;
+
+	*val = *option;
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(pm_debug_dpll_cascading_fops, dpll_cascading_get,
+		dpll_cascading_set, "%llu\n");
+
 static int __init pm_dbg_init(void)
 {
 	int i;
@@ -715,6 +832,17 @@ static int __init pm_dbg_init(void)
 			&pm_dbg_option_fops);
 	(void) debugfs_create_file("enable_sr_vp_debug",  S_IRUGO | S_IWUSR, d,
 				   &enable_sr_vp_debug, &pm_dbg_option_fops);
+
+	if (cpu_is_omap44xx()) {
+		omap4_pmd_clks_init();
+		debugfs_create_file("pmd_clks_enable", S_IRUGO|S_IWUGO, d,
+				&pmd_clks_enable, &pm_debug_pmd_clks_fops);
+
+		debugfs_create_file("dpll_cascade_enable", S_IRUGO|S_IWUGO, d,
+				&dpll_cascade_global_state,
+				&pm_debug_dpll_cascading_fops);
+	}
+
 	pm_dbg_main_dir = d;
 	pm_dbg_init_done = 1;
 
