@@ -1041,4 +1041,6 @@ struct cosmo_panel_data {
 };
 
 
+void request_dss(void);
+void release_dss(void);
 #endif
