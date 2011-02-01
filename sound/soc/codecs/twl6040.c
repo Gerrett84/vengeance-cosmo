@@ -1709,10 +1709,6 @@ static int twl6040_probe(struct snd_soc_codec *codec)
 
 	init_completion(&priv->ready);
 
-	/* Disable safe mode in SYS_NIRQ PAD */
-//	omap_writew(0x0118, 0x4A1001A0);
-
-
 	INIT_DELAYED_WORK(&priv->hsdet_dwork, twl6040_hs_jack_detect_dwork);
 	INIT_DELAYED_WORK(&priv->hook_work, twl6040_hs_hook_detect_work);
 
