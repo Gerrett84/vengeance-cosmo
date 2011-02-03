@@ -1084,7 +1084,7 @@ void dss_init_overlays(struct platform_device *pdev)
 				OMAP_DSS_COLOR_GFX_OMAP2;
 			ovl->caps = OMAP_DSS_OVL_CAP_DISPC;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_0;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_3;
 			break;
 		case 1:
 			ovl->name = "vid1";
@@ -1096,7 +1096,7 @@ void dss_init_overlays(struct platform_device *pdev)
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_3;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_2;
 			break;
 		case 2:
 			ovl->name = "vid2";
@@ -1108,7 +1108,7 @@ void dss_init_overlays(struct platform_device *pdev)
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_2;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_1;
 			break;
 		case 3:
 			ovl->name = "vid3";
@@ -1117,7 +1117,7 @@ void dss_init_overlays(struct platform_device *pdev)
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_1;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_0;
 			break;
 
 		}
