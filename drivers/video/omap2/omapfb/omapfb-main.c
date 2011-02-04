@@ -719,13 +719,7 @@ int check_fb_var(struct fb_info *fbi, struct fb_var_screeninfo *var)
 			var->xres, var->yres,
 			var->xres_virtual, var->yres_virtual);
 
-	
-	if(display == NULL) {
-		return -EINVAL;
-	}
-
-	
-	if (display && display->driver->get_dimension) {
+	if (display && display->driver->get_dimension)
 		display->driver->get_dimension(display, &var->width, &var->height);
 	} else {
 		var->height = -1;
