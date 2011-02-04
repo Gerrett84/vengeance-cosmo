@@ -4691,6 +4691,63 @@ void dispc_irq_handler(void)
 	spin_unlock(&dispc.irq_lock);
 }
 
+int omapdss_manager_reset(struct omap_overlay_manager *mgr)
+{
+	bool enable;
+	int i, ret = 0;
+
+	if (!mgr || !mgr->device)
+		return -EINVAL;
+
+	enable = mgr->device->state == OMAP_DSS_DISPLAY_ACTIVE;
+	if (mgr->device->driver->reset)
+		mgr->device->driver->reset(mgr->device,
+						OMAP_DSS_RESET_OFF);
+	else
+		omapdss_display_disable(mgr->device);
+
+	for (i = 0; i < omap_dss_get_num_overlays(); ++i) {
+		struct omap_overlay *ovl;
+		ovl = omap_dss_get_overlay(i);
+
+		if (!(ovl->caps & OMAP_DSS_OVL_CAP_DISPC))
+			continue;
+
+		if (ovl->id != 0 && ovl->manager == mgr)
+			dispc_enable_plane(ovl->id, 0);
+	}
+
+	dispc_go(mgr->id);
+	mdelay(50);
+	if (enable) {
+		if (mgr->device->driver->reset) {
+			ret = mgr->device->driver->reset(mgr->device,
+						OMAP_DSS_RESET_ON);
+			if (ret)
+				omapdss_display_disable(mgr->device);
+		} else
+			ret = omapdss_display_enable(mgr->device);
+	}
+
+	return ret;
+}
+
+int omapdss_channel_reset(enum omap_channel channel)
+{
+	int i;
+	for (i = 0; i < omap_dss_get_num_overlay_managers(); ++i) {
+		struct omap_overlay_manager *mgr;
+		mgr = omap_dss_get_overlay_manager(i);
+		if (!mgr) {
+			WARN_ON(1);
+			continue;
+		}
+		if (mgr->id == channel)
+			return omapdss_manager_reset(mgr);
+	}
+	return -EINVAL;
+}
+
 static void dispc_error_worker(struct work_struct *work)
 {
 	int i;
