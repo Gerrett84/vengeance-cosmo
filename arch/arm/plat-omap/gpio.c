@@ -1768,8 +1768,6 @@ static int omap_gpio_suspend(struct device *dev)
 	unsigned long flags;
 	struct gpio_bank *bank = &gpio_bank[pdev->id];
 
-	omap_gpio_save_context(dev);
-
 	switch (bank->method) {
 	case METHOD_GPIO_1610:
 		wake_status = bank->base + OMAP1610_GPIO_WAKEUPENABLE;
@@ -1828,8 +1826,6 @@ static int omap_gpio_resume(struct device *dev)
 	__raw_writel(0xffffffff, wake_clear);
 	__raw_writel(bank->saved_wakeup, wake_set);
 	spin_unlock_irqrestore(&bank->lock, flags);
-
-	omap_gpio_restore_context(dev);
 
 	return 0;
 }
