@@ -225,7 +225,6 @@ static struct {
 	void __iomem *base_core_av;	/* 1 */
 	void __iomem *base_wp;		/* 2 */
 	struct hdmi_core_infoframe_avi avi_param;
-	
 	struct list_head notifier_head;
 	struct hdmi_audio_format audio_fmt;
 	struct hdmi_audio_dma audio_dma;
@@ -244,6 +243,7 @@ static struct {
 	bool	device_connected;
 	
 } hdmi;
+
 static DEFINE_MUTEX(hdmi_mutex);
 
 static inline void hdmi_write_reg(u32 base, u16 idx, u32 val)
@@ -1742,15 +1742,8 @@ int hdmi_lib_enable(struct hdmi_config *cfg)
 	return r;
 }
 
-/**
- * hdmi_lib_init - Initializes hdmi library
- *
- * hdmi_lib_init is expected to be called by any user of the hdmi library (e.g.
- * HDMI video driver, HDMI audio driver). This means that it is not safe to add
- * anything in this function that requires the DSS clocks to be enabled.
- */
-int hdmi_lib_init(void)
-{
+int hdmi_lib_init(void){
+	u32 rev;
 	static u8 initialized;
 
 	mutex_lock(&hdmi_mutex);
