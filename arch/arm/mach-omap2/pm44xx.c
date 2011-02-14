@@ -529,8 +529,6 @@ static void Cosmo_padconf_save()
 }
 
 
-int offmode_enter=0;
-
 int mpu_m3_clkctrl =0;
 int mpu_m3_clkctrl_count = 0;
 static int omap4_pm_suspend(void)
@@ -622,12 +620,19 @@ static int omap4_pm_suspend(void)
 		}
 	}
 
+	/*
+	 * To Ensure that we don't attempt suspend when CPU1 is
+	 * not in OFF state to avoid un-supported H/W mode
+	 */
+	cpu1_state = pwrdm_read_pwrst(cpu1_pwrdm);
+	if (cpu1_state != PWRDM_POWER_OFF)
+		goto restore;
+
 	omap_uart_prepare_suspend();
 	
 	omap_hsi_prepare_suspend(); 
 	
 
-	offmode_enter=1;
 	/* Enable Device OFF */
 	if (enable_off_mode)
 		omap4_device_off_set_state(1);
