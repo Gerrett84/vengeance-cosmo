@@ -1,6 +1,5 @@
 /*
  *  FM Driver for Connectivity chip of Texas Instruments.
- *
  *  This file provides interfaces to V4L2 subsystem.
  *
  *  This module registers with V4L2 subsystem as Radio
@@ -10,7 +9,7 @@
  *    1) File operation related API (open, close, read, write, poll...etc).
  *    2) Set of V4L2 IOCTL complaint API.
  *
- *  Copyright (C) 2009 Texas Instruments
+ *  Copyright (C) 2010 Texas Instruments
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -29,8 +28,19 @@
 
 #include "fmdrv.h"
 #include "fmdrv_v4l2.h"
-#include "fmdrv_core.h"
+#include "fmdrv_common.h"
+#include "fmdrv_rx.h"
+/* TODO: Enable when FM TX is supported */
+/* #include "fmdrv_tx.h" */
 
+#ifndef DEBUG
+#ifdef pr_info
+#undef pr_info
+#define pr_info(fmt, arg...)
+#endif
+#endif
+
+static struct video_device *gradio_dev;
 static unsigned char radio_disconnected;
 
 /* Query control */
@@ -72,342 +82,293 @@ static struct v4l2_queryctrl fmdrv_v4l2_queryctrl[] = {
 };
 
 /* -- V4L2 RADIO (/dev/radioX) device file operation interfaces --- */
-
-/* Read RDS data */
+/* Read RX RDS data */
 static ssize_t fm_v4l2_fops_read(struct file *file, char __user * buf,
-				 size_t count, loff_t *ppos)
+					size_t count, loff_t *ppos)
 {
 	unsigned char rds_mode;
-	int ret, noof_bytes_copied;
-	FMDRV_API_START();
+	int ret;
+	struct fmdrv_ops *fmdev;
+
+	fmdev = video_drvdata(file);
 
 	if (!radio_disconnected) {
-		FM_DRV_ERR("FM device is already disconnected\n");
-		FMDRV_API_EXIT(-EIO);
-		return -EIO;
+		pr_err("(fmdrv): FM device is already disconnected\n");
+		ret = -EIO;
+		goto exit;
 	}
+
 	/* Turn on RDS mode , if it is disabled */
-	ret = fm_core_rx_get_rds_mode(&rds_mode);
-	if (ret) {
-		FM_DRV_ERR("Unable to read current rds mode");
-		FMDRV_API_EXIT(ret);
-		return ret;
+	ret = fm_rx_get_rds_mode(fmdev, &rds_mode);
+	if (ret < 0) {
+		pr_err("(fmdrv): Unable to read current rds mode");
+		goto exit;
 	}
-	if (rds_mode == FM_RX_RDS_DISABLE) {
-		ret = fm_core_set_rds_mode(FM_RX_RDS_ENABLE);
+	if (rds_mode == FM_RDS_DISABLE) {
+		ret = fmc_set_rds_mode(fmdev, FM_RDS_ENABLE);
 		if (ret < 0) {
-			FM_DRV_ERR("Unable to enable rds mode");
-			FMDRV_API_EXIT(ret);
-			return ret;
+			pr_err("(fmdrv): Failed to enable rds mode");
+			goto exit;
 		}
 	}
 	/* Copy RDS data from internal buffer to user buffer */
-	noof_bytes_copied =
-	    fm_core_transfer_rds_from_internal_buff(file, buf, count);
+	ret = fmc_transfer_rds_from_internal_buff(fmdev, file, buf, count);
 
-	FMDRV_API_EXIT(noof_bytes_copied);
-	return noof_bytes_copied;
+exit:
+	return ret;
 }
 
-/* Write RDS data */
+/* Write RDS data.
+ * TODO: When FM TX support is added, use "V4L2_CID_RDS_TX_XXXX" codes,
+ * instead of write operation.
+ */
 static ssize_t fm_v4l2_fops_write(struct file *file, const char __user * buf,
-				  size_t count, loff_t *ppos)
+					size_t count, loff_t *ppos)
 {
 	struct tx_rds rds;
 	int ret;
-	FMDRV_API_START();
+	struct fmdrv_ops *fmdev;
 
 	ret = copy_from_user(&rds, buf, sizeof(rds));
-	FM_DRV_DBG("(%d)type: %d, text %s, af %d",
+	pr_info("(fmdrv): (%d)type: %d, text %s, af %d",
 		   ret, rds.text_type, rds.text, rds.af_freq);
 
-	fm_core_tx_set_radio_text(rds.text, rds.text_type);
-	fm_core_tx_set_af(rds.af_freq);
+	fmdev = video_drvdata(file);
+	/* TODO: Enable when FM TX is supported */
+	/* fm_tx_set_radio_text(fmdev, rds.text, rds.text_type); */
+	/* fm_tx_set_af(fmdev, rds.af_freq); */
 
-	FMDRV_API_EXIT(0);
 	return 0;
 }
 
-/* Poll RDS data */
 static unsigned int fm_v4l2_fops_poll(struct file *file,
 				      struct poll_table_struct *pts)
 {
 	int ret;
-	FMDRV_API_START();
+	struct fmdrv_ops *fmdev;
 
-	ret = fm_core_is_rds_data_available(file, pts);
-	if (!ret) {
-		FMDRV_API_EXIT(POLLIN | POLLRDNORM);
+	fmdev = video_drvdata(file);
+	ret = fmc_is_rds_data_available(fmdev, file, pts);
+	if (!ret)
 		return POLLIN | POLLRDNORM;
-	}
-
-	FMDRV_API_EXIT(0);
 	return 0;
 }
 
-/* File Open */
+/* Handle open request for "/dev/radioX" device.
+ * Start with FM RX mode as default.
+ */
 static int fm_v4l2_fops_open(struct file *file)
 {
 	int ret;
-
-	FMDRV_API_START();
+	struct fmdrv_ops *fmdev = NULL;
 
 	/* Don't allow multiple open */
 	if (radio_disconnected) {
-		FM_DRV_ERR("FM device is already opened\n");
-		FMDRV_API_EXIT(-EBUSY);
-		return -EBUSY;
+		pr_err("(fmdrv): FM device is already opened\n");
+		ret = -EBUSY;
+		goto exit;
 	}
 
-	/* Request FM Core to link with FM ST */
-	ret = fm_core_setup_transport();
-	if (ret) {
-		FM_DRV_ERR("Unable to setup FM Core transport");
-		FMDRV_API_EXIT(ret);
-		return ret;
-	}
-	/* Initialize FM Core */
-	ret = fm_core_prepare();
-	if (ret) {
-		FM_DRV_ERR("Unable to prepare FM CORE");
-		FMDRV_API_EXIT(ret);
-		return ret;
+	fmdev = video_drvdata(file);
+	ret = fmc_prepare(fmdev);
+	if (ret < 0) {
+		pr_err("(fmdrv): Unable to prepare FM CORE");
+		goto exit;
 	}
 
-	FM_DRV_DBG("Load FM RX firmware..");
-	/* By default load FM RX firmware */
-	ret = fm_core_mode_set(FM_MODE_RX);
-	if (ret) {
-		FM_DRV_ERR("Unable to load FM RX firmware");
-		FMDRV_API_EXIT(ret);
-		return ret;
+	pr_info("(fmdrv): Load FM RX firmware..");
+	ret = fmc_set_mode(fmdev, FM_MODE_RX);
+	if (ret < 0) {
+		pr_err("(fmdrv): Unable to load FM RX firmware");
+		goto exit;
 	}
 	radio_disconnected = 1;
-	FM_DRV_DBG("FM CORE is ready");
 
-	FMDRV_API_EXIT(0);
-	return 0;
+exit:
+	return ret;
 }
 
-/* File Release */
 static int fm_v4l2_fops_release(struct file *file)
 {
-	int ret;
+	int ret = 0;
+	struct fmdrv_ops *fmdev;
 
-	FMDRV_API_START();
-
+	fmdev = video_drvdata(file);
 	if (!radio_disconnected) {
-		FM_DRV_DBG("FM device already closed,close called again?");
-		FMDRV_API_EXIT(0);
-		return 0;
+		pr_info("(fmdrv):FM dev already closed, close called again?");
+		goto exit;
 	}
-
-	FM_DRV_DBG("Turning off..");
-	ret = fm_core_mode_set(FM_MODE_OFF);
-	if (ret) {
-		FM_DRV_ERR("Unable to turn off the chip");
-		FMDRV_API_EXIT(ret);
-		return ret;
+	ret = fmc_set_mode(fmdev, FM_MODE_OFF);
+	if (ret < 0) {
+		pr_err("(fmdrv): Unable to turn off the chip");
+		goto exit;
 	}
-	/* Request FM Core to unlink from ST driver */
-	ret = fm_core_release();
-	if (ret) {
-		FM_DRV_ERR("FM CORE release failed");
-		FMDRV_API_EXIT(ret);
-		return ret;
-	}
-
-	/* Release FM Core transport */
-	ret = fm_core_release_transport();
-	if (ret) {
-		FM_DRV_ERR("Unable to setup FM Core transport");
-		FMDRV_API_EXIT(ret);
-		return ret;
+	ret = fmc_release(fmdev);
+	if (ret < 0) {
+		pr_err("(fmdrv): FM CORE release failed");
+		goto exit;
 	}
 	radio_disconnected = 0;
-	FM_DRV_DBG("FM CORE released successfully");
 
-	FMDRV_API_EXIT(0);
-	return 0;
+exit:
+	return ret;
 }
 
 /* V4L2 RADIO (/dev/radioX) device IOCTL interfaces */
-
-/* Query device capabilities */
 static int fm_v4l2_vidioc_querycap(struct file *file, void *priv,
-				   struct v4l2_capability *capability)
+					struct v4l2_capability *capability)
 {
-	FMDRV_API_START();
-
 	strlcpy(capability->driver, FM_DRV_NAME, sizeof(capability->driver));
 	strlcpy(capability->card, FM_DRV_CARD_SHORT_NAME,
 		sizeof(capability->card));
 	sprintf(capability->bus_info, "UART");
 	capability->version = FM_DRV_RADIO_VERSION;
 	capability->capabilities = V4L2_CAP_HW_FREQ_SEEK | V4L2_CAP_TUNER |
-	    V4L2_CAP_RADIO | V4L2_CAP_READWRITE | V4L2_CAP_AUDIO;
-	FMDRV_API_EXIT(0);
+				V4L2_CAP_RADIO | V4L2_CAP_MODULATOR |
+				V4L2_CAP_AUDIO | V4L2_CAP_READWRITE |
+				V4L2_CAP_RDS_CAPTURE;
 	return 0;
 }
 
-/* Enumerate control items */
 static int fm_v4l2_vidioc_queryctrl(struct file *file, void *priv,
-				    struct v4l2_queryctrl *qc)
+					struct v4l2_queryctrl *qc)
 {
 	int index;
-	int ret;
+	int ret = -EINVAL;
 
-	FMDRV_API_START();
-
-	ret = -EINVAL;
-	if (qc->id < V4L2_CID_BASE) {
-		FMDRV_API_EXIT(ret);
+	if (qc->id < V4L2_CID_BASE)
 		return ret;
-	}
+
 	/* Search control ID and copy its properties */
-	for (index = 0; index < NO_OF_ENTRIES_IN_ARRAY(fmdrv_v4l2_queryctrl); index++) {
+	for (index = 0; index < NO_OF_ENTRIES_IN_ARRAY(fmdrv_v4l2_queryctrl);\
+		index++) {
 		if (qc->id && qc->id == fmdrv_v4l2_queryctrl[index].id) {
 			memcpy(qc, &(fmdrv_v4l2_queryctrl[index]), sizeof(*qc));
 			ret = 0;
 			break;
 		}
 	}
-	FMDRV_API_EXIT(ret);
 	return ret;
 }
 
-/* Get the value of a control */
 static int fm_v4l2_vidioc_g_ctrl(struct file *file, void *priv,
-				 struct v4l2_control *ctrl)
+					struct v4l2_control *ctrl)
 {
-	int ret;
+	int ret = -EINVAL;
 	unsigned short curr_vol;
 	unsigned char curr_mute_mode;
+	struct fmdrv_ops *fmdev;
 
-	FMDRV_API_START();
+	fmdev = video_drvdata(file);
 
 	switch (ctrl->id) {
-
 	case V4L2_CID_AUDIO_MUTE:	/* get mute mode */
-		ret = fm_core_rx_get_mute_mode(&curr_mute_mode);
-		if (ret < 0) {
-			FMDRV_API_EXIT(ret);
-			return ret;
-		}
+		ret = fm_rx_get_mute_mode(fmdev, &curr_mute_mode);
+		if (ret < 0)
+			goto exit;
 		ctrl->value = curr_mute_mode;
 		break;
-
 	case V4L2_CID_AUDIO_VOLUME:	/* get volume */
-		ret = fm_core_rx_get_volume(&curr_vol);
-		if (ret < 0) {
-			FMDRV_API_EXIT(ret);
-			return ret;
-		}
+		ret = fm_rx_get_volume(fmdev, &curr_vol);
+		if (ret < 0)
+			goto exit;
 		ctrl->value = curr_vol;
 		break;
 	}
-	FMDRV_API_EXIT(0);
-	return 0;
+
+exit:
+	return ret;
 }
 
-/* Set the value of a control */
 static int fm_v4l2_vidioc_s_ctrl(struct file *file, void *priv,
-				 struct v4l2_control *ctrl)
+					struct v4l2_control *ctrl)
 {
-	int ret;
-	FMDRV_API_START();
+	int ret = -EINVAL;
+	struct fmdrv_ops *fmdev;
+
+	fmdev = video_drvdata(file);
 
 	switch (ctrl->id) {
-
 	case V4L2_CID_AUDIO_MUTE:	/* set mute */
-		ret = fm_core_set_mute_mode((unsigned char)ctrl->value);
-		if (ret < 0) {
-			FMDRV_API_EXIT(ret);
-			return ret;
-		}
+		ret = fmc_set_mute_mode(fmdev, (unsigned char)ctrl->value);
+		if (ret < 0)
+			goto exit;
 		break;
-
 	case V4L2_CID_AUDIO_VOLUME:	/* set volume */
-		ret = fm_core_rx_set_volume((unsigned short)ctrl->value);
-		if (ret < 0) {
-			FMDRV_API_EXIT(ret);
-			return ret;
-		}
+		ret = fm_rx_set_volume(fmdev, (unsigned short)ctrl->value);
+		if (ret < 0)
+			goto exit;
 		break;
 	}
-	FMDRV_API_EXIT(0);
-	return 0;
+
+exit:
+	return ret;
 }
 
-/* Get audio attributes */
 static int fm_v4l2_vidioc_g_audio(struct file *file, void *priv,
-				  struct v4l2_audio *audio)
+					struct v4l2_audio *audio)
 {
-	FMDRV_API_START();
-
 	memset(audio, 0, sizeof(*audio));
 	audio->index = 0;
 	strcpy(audio->name, "Radio");
 	audio->capability = V4L2_AUDCAP_STEREO;
 
-	FMDRV_API_EXIT(0);
 	return 0;
 }
 
-/* Set audio attributes */
 static int fm_v4l2_vidioc_s_audio(struct file *file, void *priv,
-				  struct v4l2_audio *audio)
+					struct v4l2_audio *audio)
 {
-	FMDRV_API_START();
-
-	if (audio->index != 0) {
-		FMDRV_API_EXIT(-EINVAL);
+	if (audio->index != 0)
 		return -EINVAL;
-	}
-	FMDRV_API_EXIT(0);
 	return 0;
 }
 
-/* Get tuner attributes */
+/* Get tuner attributes. If current mode is NOT RX, set to RX */
 static int fm_v4l2_vidioc_g_tuner(struct file *file, void *priv,
-				  struct v4l2_tuner *tuner)
+					struct v4l2_tuner *tuner)
 {
 	unsigned int bottom_frequency;
 	unsigned int top_frequency;
 	unsigned short stereo_mono_mode;
 	unsigned short rssilvl;
-	int ret;
+	int ret = -EINVAL;
+	struct fmdrv_ops *fmdev;
 
-	FMDRV_API_START();
+	if (tuner->index != 0)
+		goto exit;
 
-	if (tuner->index != 0) {
-		FMDRV_API_EXIT(-EINVAL);
-		return -EINVAL;
+	fmdev = video_drvdata(file);
+	if (fmdev->curr_fmmode != FM_MODE_RX) {
+		ret = fmc_set_mode(fmdev, FM_MODE_RX);
+		if (ret < 0) {
+			pr_err("(fmdrv): Failed to set RX mode; unable to " \
+					"read tuner attributes\n");
+			goto exit;
+		}
 	}
-	ret =
-	    fm_core_rx_get_currband_lowhigh_freq(&bottom_frequency,
+
+	ret = fm_rx_get_currband_lowhigh_freq(fmdev, &bottom_frequency,
 						 &top_frequency);
-	if (ret) {
-		FMDRV_API_EXIT(ret);
-		return ret;
-	}
-	ret = fm_core_rx_get_stereo_mono(&stereo_mono_mode);
-	if (ret) {
-		FMDRV_API_EXIT(ret);
-		return ret;
-	}
-	ret = fm_core_rx_get_rssi_level(&rssilvl);
-	if (ret) {
-		FMDRV_API_EXIT(ret);
-		return ret;
-	}
+	if (ret < 0)
+		goto exit;
+
+	ret = fm_rx_get_stereo_mono(fmdev, &stereo_mono_mode);
+	if (ret < 0)
+		goto exit;
+
+	ret = fm_rx_get_rssi_level(fmdev, &rssilvl);
+	if (ret < 0)
+		goto exit;
+
 	strcpy(tuner->name, "FM");
 	tuner->type = V4L2_TUNER_RADIO;
 	/* Store rangelow and rangehigh freq in unit of 62.5 KHz */
 	tuner->rangelow = (bottom_frequency * 10000) / 625;
 	tuner->rangehigh = (top_frequency * 10000) / 625;
-	tuner->rxsubchans = V4L2_TUNER_SUB_MONO | V4L2_TUNER_SUB_STEREO;
-	tuner->capability = V4L2_TUNER_CAP_STEREO | V4L2_TUNER_CAP_LOW;
+	tuner->rxsubchans = V4L2_TUNER_SUB_MONO | V4L2_TUNER_SUB_STEREO |
+	((fmdev->rx.rds.flag == FM_RDS_ENABLE) ? V4L2_TUNER_SUB_RDS : 0);
+	tuner->capability = V4L2_TUNER_CAP_STEREO | V4L2_TUNER_CAP_RDS;
 	tuner->audmode = (stereo_mono_mode ?
 			  V4L2_TUNER_MODE_MONO : V4L2_TUNER_MODE_STEREO);
 
@@ -422,87 +383,103 @@ static int fm_v4l2_vidioc_g_tuner(struct file *file, void *priv,
 	tuner->signal = rssilvl * 257;
 	tuner->afc = 0;
 
-	FMDRV_API_EXIT(0);
-	return 0;
+exit:
+	return ret;
 }
 
-/* Set tuner attributes */
+/* Set tuner attributes. If current mode is NOT RX, set to RX.
+ * Currently, we set only audio mode (mono/stereo) and RDS state (on/off).
+ * Should we set other tuner attributes, too?
+ */
 static int fm_v4l2_vidioc_s_tuner(struct file *file, void *priv,
-				  struct v4l2_tuner *tuner)
+					struct v4l2_tuner *tuner)
 {
-	unsigned short mode;
-	int ret;
+	unsigned short aud_mode;
+	unsigned char rds_mode;
+	int ret = -EINVAL;
+	struct fmdrv_ops *fmdev;
 
-	FMDRV_API_START();
+	if (tuner->index != 0)
+		goto exit;
 
-	if ((tuner->index != 0) ||
-	    (tuner->audmode != V4L2_TUNER_MODE_MONO &&
-	     tuner->audmode != V4L2_TUNER_MODE_STEREO)) {
-		FMDRV_API_EXIT(-EINVAL);
-		return -EINVAL;
-	}
-	/* Map V4L2 stereo/mono macro to our local stereo/mono macro */
-	mode = (tuner->audmode == V4L2_TUNER_MODE_STEREO) ?
+	aud_mode = (tuner->audmode == V4L2_TUNER_MODE_STEREO) ?
 	    FM_STEREO_MODE : FM_MONO_MODE;
-	ret = fm_core_set_stereo_mono(mode);
-	if (ret) {
-		FMDRV_API_EXIT(ret);
-		return ret;
+	rds_mode = (tuner->rxsubchans & V4L2_TUNER_SUB_RDS) ?
+			FM_RDS_ENABLE : FM_RDS_DISABLE;
+
+	fmdev = video_drvdata(file);
+	if (fmdev->curr_fmmode != FM_MODE_RX) {
+		ret = fmc_set_mode(fmdev, FM_MODE_RX);
+		if (ret < 0) {
+			pr_err("(fmdrv): Failed to set RX mode; unable to" \
+					"write tuner attributes\n");
+			goto exit;
+		}
 	}
 
-	FMDRV_API_EXIT(0);
-	return 0;
+	ret = fmc_set_stereo_mono(fmdev, aud_mode);
+	if (ret < 0)
+		goto exit;
+
+	ret = fmc_set_rds_mode(fmdev, rds_mode);
+	if (ret < 0)
+		goto exit;
+
+exit:
+	return ret;
 }
 
 /* Get tuner or modulator radio frequency */
 static int fm_v4l2_vidioc_g_frequency(struct file *file, void *priv,
-				      struct v4l2_frequency *freq)
+					struct v4l2_frequency *freq)
 {
 	int ret;
-	FMDRV_API_START();
+	struct fmdrv_ops *fmdev;
 
-	ret = fm_core_get_frequency(&freq->frequency);
-	if (ret) {
-		FMDRV_API_EXIT(ret);
+	fmdev = video_drvdata(file);
+	ret = fmc_get_frequency(fmdev, &freq->frequency);
+	if (ret < 0)
 		return ret;
-	}
-
-	FMDRV_API_EXIT(0);
 	return 0;
 }
 
 /* Set tuner or modulator radio frequency */
 static int fm_v4l2_vidioc_s_frequency(struct file *file, void *priv,
-				      struct v4l2_frequency *freq)
+					struct v4l2_frequency *freq)
 {
 	int ret;
-	FMDRV_API_START();
+	struct fmdrv_ops *fmdev;
 
-	ret = fm_core_set_frequency(freq->frequency);
-	if (ret) {
-		FMDRV_API_EXIT(ret);
+	fmdev = video_drvdata(file);
+	ret = fmc_set_frequency(fmdev, freq->frequency);
+	if (ret < 0)
 		return ret;
-	}
-	FMDRV_API_EXIT(0);
 	return 0;
 }
 
-/* Set hardware frequency seek */
+/* Set hardware frequency seek. If current mode is NOT RX, set it RX. */
 static int fm_v4l2_vidioc_s_hw_freq_seek(struct file *file, void *priv,
-					 struct v4l2_hw_freq_seek *seek)
+					struct v4l2_hw_freq_seek *seek)
 {
 	int ret;
+	struct fmdrv_ops *fmdev;
 
-	FMDRV_API_START();
-
-	ret = fm_core_rx_seek(seek->seek_upward, seek->wrap_around);
-	if (ret) {
-		FMDRV_API_EXIT(ret);
-		return ret;
+	fmdev = video_drvdata(file);
+	if (fmdev->curr_fmmode != FM_MODE_RX) {
+		ret = fmc_set_mode(fmdev, FM_MODE_RX);
+		if (ret != 0) {
+			pr_err("(fmdrv): Failed to set RX mode; unable to " \
+					"start HW frequency seek\n");
+			goto exit;
+		}
 	}
 
-	FMDRV_API_EXIT(0);
-	return 0;
+	ret = fm_rx_seek(fmdev, seek->seek_upward, seek->wrap_around);
+	if (ret < 0)
+		goto exit;
+
+exit:
+	return ret;
 }
 
 static const struct v4l2_file_operations fm_drv_fops = {
@@ -526,12 +503,10 @@ static const struct v4l2_ioctl_ops fm_drv_ioctl_ops = {
 	.vidioc_s_tuner = fm_v4l2_vidioc_s_tuner,
 	.vidioc_g_frequency = fm_v4l2_vidioc_g_frequency,
 	.vidioc_s_frequency = fm_v4l2_vidioc_s_frequency,
-	.vidioc_s_hw_freq_seek = fm_v4l2_vidioc_s_hw_freq_seek,
+	.vidioc_s_hw_freq_seek = fm_v4l2_vidioc_s_hw_freq_seek
 };
 
-/*
- * V4L2 RADIO device parent structure
- */
+/* V4L2 RADIO device parent structure */
 static struct video_device fm_viddev_template = {
 	.fops = &fm_drv_fops,
 	.ioctl_ops = &fm_drv_ioctl_ops,
@@ -539,43 +514,44 @@ static struct video_device fm_viddev_template = {
 	.release = video_device_release,
 };
 
-int fm_v4l2_init_video_device(struct fmdrv_ops *fmdev)
+int fm_v4l2_init_video_device(struct fmdrv_ops *fmdev, int radio_nr)
 {
-	FMDRV_API_START();
+	int ret = -ENOMEM;
 
+	gradio_dev = NULL;
 	/* Allocate new video device */
-	fmdev->v4l2dev = video_device_alloc();
-	if (!fmdev->v4l2dev) {
-		FM_DRV_ERR("Can't allocate video device");
-		FMDRV_API_EXIT(-ENOMEM);
-		return -ENOMEM;
+	gradio_dev = video_device_alloc();
+	if (NULL == gradio_dev) {
+		pr_err("(fmdrv): Can't allocate video device");
+		goto exit;
 	}
 
 	/* Setup FM driver's V4L2 properties */
-	memcpy(fmdev->v4l2dev, &fm_viddev_template, sizeof(fm_viddev_template));
+	memcpy(gradio_dev, &fm_viddev_template, sizeof(fm_viddev_template));
 
-	video_set_drvdata(fmdev->v4l2dev, fmdev);
+	video_set_drvdata(gradio_dev, fmdev);
 
 	/* Register with V4L2 subsystem as RADIO device */
-	if (video_register_device(fmdev->v4l2dev, VFL_TYPE_RADIO, 0)) {
-		video_device_release(fmdev->v4l2dev);
-		fmdev->v4l2dev = NULL;
-
-		FM_DRV_ERR("Could not register video device");
-		FMDRV_API_EXIT(-ENOMEM);
-		return -ENOMEM;
+	if (video_register_device(gradio_dev, VFL_TYPE_RADIO, radio_nr)) {
+		video_device_release(gradio_dev);
+		pr_err("(fmdrv): Could not register video device");
+		goto exit;
 	}
-	FMDRV_API_EXIT(0);
-	return 0;
+
+	fmdev->radio_dev = gradio_dev;
+	ret = 0;
+
+exit:
+	return ret;
 }
 
-int fm_v4l2_deinit_video_device(struct fmdrv_ops *fmdev)
+void *fm_v4l2_deinit_video_device(void)
 {
-	FMDRV_API_START();
+	struct fmdrv_ops *fmdev;
 
+	fmdev = video_get_drvdata(gradio_dev);
 	/* Unregister RADIO device from V4L2 subsystem */
-	video_unregister_device(fmdev->v4l2dev);
+	video_unregister_device(gradio_dev);
 
-	FMDRV_API_EXIT(0);
-	return 0;
+	return fmdev;
 }

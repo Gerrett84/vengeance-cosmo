@@ -22,6 +22,9 @@
 
 #include "board-connectivity.h"
 
+#include <linux/skbuff.h>
+#include <linux/ti_wilink_st.h>
+
 #define CONFIG_MACH_OMAP_FST_WL127x
 
 #if defined(CONFIG_MACH_OMAP_ZOOM3)\
@@ -69,15 +72,40 @@
 #define GPS_EN_GPIO -1
 #endif
 
+int plat_kim_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	/* TODO: wait for HCI-LL sleep */
+	return 0;
+}
+int plat_kim_resume(struct platform_device *pdev)
+{
+	return 0;
+}
+
 static int conn_gpios[] = { BT_EN_GPIO, FM_EN_GPIO, GPS_EN_GPIO };
+
+struct ti_st_plat_data wilink_pdata = {
+        .nshutdown_gpio = BT_EN_GPIO,
+        .dev_name = "/dev/ttyO1",
+        .flow_cntrl = 1,
+        .baud_rate = 3000000,
+        .suspend = plat_kim_suspend,
+        .resume = plat_kim_resume,
+};
 
 static struct platform_device conn_device = {
 	.name = "kim",		/* named after init manager for ST */
 	.id = -1,
-	.dev.platform_data = &conn_gpios,
+	.dev.platform_data = &wilink_pdata,
+};
+
+static struct platform_device btwilink_device = {
+       .name = "btwilink",
+       .id = -1,
 };
 
 static struct platform_device *conn_plat_devices[] __initdata = {
+	&btwilink_device,
 	&conn_device,
 };
 

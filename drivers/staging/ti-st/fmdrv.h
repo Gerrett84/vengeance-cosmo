@@ -30,44 +30,12 @@
 #include <linux/timer.h>
 #include <linux/version.h>
 
-/* Driver version */
 #define FM_DRV_VERSION            "0.01"
-
 /* Should match with FM_DRV_VERSION */
 #define FM_DRV_RADIO_VERSION      KERNEL_VERSION(0, 0, 1)
-
-/* Driver name */
 #define FM_DRV_NAME               "ti_fmdrv"
-
-/* Card short name */
 #define FM_DRV_CARD_SHORT_NAME    "TI FM Radio"
-
-/* Card long name */
 #define FM_DRV_CARD_LONG_NAME     "Texas Instruments FM Radio"
-
-/* Define this macro to get debug msg */
-#ifdef DEBUG
-#define FM_DRV_DBG(fmt, arg...)  \
-	pr_info("(fmdrv): "fmt"\n" , ## arg)
-#define FMDRV_API_START()        \
-	pr_info("(fmdrv): %s Start\n", __func__)
-#define FMDRV_API_EXIT(errno)    \
-	pr_info("(fmdrv): %s Exit(%d)\n", __func__, errno)
-#define FM_DUMP_TXRX_PKT
-#else
-#define FM_DRV_DBG(fmt, arg...)
-#define FMDRV_API_START()
-#define FMDRV_API_EXIT(errno)
-#endif
-
-#define FM_DRV_ERR(fmt, arg...)  \
-	pr_err("(fmdrv): "fmt"\n" , ## arg)
-
-#define FM_ST_NOT_CLAIMED  0
-#define FM_ST_CLAIMED      1
-
-#define FM_ST_SUCCESS      0
-#define FM_ST_FAILED      -1
 
 /* Flag info */
 #define FM_INTTASK_RUNNING            0
@@ -78,16 +46,11 @@
 #define FM_AF_SWITCH_INPROGRESS	      5
 #define FM_CORE_TX_XMITING	      6
 
-/* FM packet TX timeout */
 #define FM_DRV_TX_TIMEOUT      (5*HZ)	/* 5 seconds */
-
-/* Seek operation timeout */
 #define FM_DRV_RX_SEEK_TIMEOUT (20*HZ)	/* 20 seconds */
 
-/* To know the number of entries in array */
 #define NO_OF_ENTRIES_IN_ARRAY(array) (sizeof(array) / sizeof(array[0]))
 
-/* Firmware download option */
 enum {
 	FM_MODE_OFF,
 	FM_MODE_TX,
@@ -101,39 +64,37 @@ enum {
 struct fm_rdsdata_format {
 	union {
 		struct {
-			unsigned char rdsBuff[FM_RX_RDS_INFO_FIELD_MAX];
-		} groupDataBuff;
+			unsigned char rdsbuff[FM_RX_RDS_INFO_FIELD_MAX];
+		} groupdatabuff;
 		struct {
-			unsigned short piData;
-			unsigned char blockB_byte1;
-			unsigned char blockB_byte2;
-			unsigned char blockC_byte1;
-			unsigned char blockC_byte2;
-			unsigned char blockD_byte1;
-			unsigned char blockD_byte2;
-		} groupGeneral;
+			unsigned short pidata;
+			unsigned char block_b_byte1;
+			unsigned char block_b_byte2;
+			unsigned char block_c_byte1;
+			unsigned char block_c_byte2;
+			unsigned char block_d_byte1;
+			unsigned char block_d_byte2;
+		} groupgeneral;
 		struct {
-			unsigned short piData;
-			unsigned char blockB_byte1;
-			unsigned char blockB_byte2;
-			unsigned char firstAf;
-			unsigned char secondAf;
-			unsigned char firstPsByte;
-			unsigned char secondPsByte;
+			unsigned short pidata;
+			unsigned char block_b_byte1;
+			unsigned char block_b_byte2;
+			unsigned char firstaf;
+			unsigned char secondaf;
+			unsigned char firstpsbyte;
+			unsigned char secondpsbyte;
 		} group0A;
 
 		struct {
-			unsigned short piData;
-			unsigned char blockB_byte1;
-			unsigned char blockB_byte2;
-			unsigned short piData2;
-			unsigned char firstPsByte;
-			unsigned char secondPsByte;
+			unsigned short pidata;
+			unsigned char block_b_byte1;
+			unsigned char block_b_byte2;
+			unsigned short pidata2;
+			unsigned char firstpsbyte;
+			unsigned char secondpsbyte;
 		} group0B;
-	} rdsData;
+	} rdsdata;
 };
-
-typedef void (*Int_Handler_ProtoType) (void);
 
 /* FM region (Europe/US, Japan) info */
 struct region_info {
@@ -142,6 +103,9 @@ struct region_info {
 	unsigned int top_frequency;
 	unsigned char region_index;
 };
+
+typedef void (*int_handler_prototype) (void *);
+
 /* FM Interrupt processing related info */
 struct fm_irq {
 	unsigned char stage_index;
@@ -150,7 +114,7 @@ struct fm_irq {
 	/* Interrupt process timeout handler */
 	struct timer_list int_timeout_timer;
 	unsigned char irq_service_timeout_retry;
-	Int_Handler_ProtoType *fm_IntActionHandlerTable;
+	int_handler_prototype *fm_int_handlers;
 };
 
 /* RDS info */
@@ -189,7 +153,7 @@ struct fm_rx {
 	unsigned short curr_volume;	/* Current volume level */
 	short curr_rssi_threshold;	/* Current RSSI threshold level */
 	/* Holds the index of the current AF jump */
-	unsigned char cur_Afjump_index;
+	unsigned char cur_afjump_index;
 	/* Will hold the frequency before the jump */
 	unsigned int freq_before_jump;
 	unsigned char rds_mode;	/* RDS operation mode (RDS/RDBS) */
@@ -229,13 +193,14 @@ struct fmtx_data {
 
 /* FM driver operation structure */
 struct fmdrv_ops {
-	struct video_device *v4l2dev;	/* V4L2 video device pointer */
+	struct video_device *radio_dev;	/* V4L2 video device pointer */
 	struct snd_card *card;	/* Card which holds FM mixer controls */
 	unsigned short asci_id;
-	spinlock_t rds_buff_lock;
-	spinlock_t resp_skb_lock;
+	spinlock_t rds_buff_lock; /* To protect access to RDS buffer */
+	spinlock_t resp_skb_lock; /* To protect access to received SKB */
 
 	long flag;		/*  FM driver state machine info */
+	char streg_cbdata; /* status of ST registration */
 
 	struct sk_buff_head rx_q;	/* RX queue */
 	struct tasklet_struct rx_task;	/* RX Tasklet */
@@ -257,5 +222,4 @@ struct fmdrv_ops {
 	struct fm_rx rx;	/* FM receiver info */
 	struct fmtx_data tx_data;
 };
-
 #endif

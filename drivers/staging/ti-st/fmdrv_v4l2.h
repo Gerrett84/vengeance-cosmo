@@ -3,7 +3,7 @@
  *
  *  FM V4L2 module header.
  *
- *  Copyright (C) 2009 Texas Instruments
+ *  Copyright (C) 2010 Texas Instruments
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -20,13 +20,13 @@
  *
  */
 
-#ifndef _FM_V4L2_DRV_H
-#define _FM_V4L2_DRV_H
+#ifndef _FMDRV_V4L2_H
+#define _FMDRV_V4L2_H
 
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
 
-int fm_v4l2_init_video_device(struct fmdrv_ops *fmdev);
-int fm_v4l2_deinit_video_device(struct fmdrv_ops *fmdev);
+int fm_v4l2_init_video_device(struct fmdrv_ops *, int);
+void *fm_v4l2_deinit_video_device(void);
 
 #endif

@@ -31,18 +31,87 @@
 #include <linux/skbuff.h>
 #include <linux/interrupt.h>
 
-#include "gps_drv.h"
-#include "st.h"
+#include <linux/ti_wilink_st.h>
 
+#undef VERBOSE
+#undef DEBUG
+
+/* Debug macros*/
+#if defined(DEBUG)		/* limited debug messages */
+#define GPSDRV_DBG(fmt, arg...)  printk(KERN_INFO "(gpsdrv):"fmt"\n" , ## arg)
+#define GPSDRV_VER(fmt, arg...)
+#elif defined(VERBOSE)		/* very verbose */
+#define GPSDRV_DBG(fmt, arg...)  printk(KERN_INFO "(gpsdrv):"fmt"\n" , ## arg)
+#define GPSDRV_VER(fmt, arg...)  printk(KERN_INFO "(gpsdrv):"fmt"\n" , ## arg)
+#define GPSDRV_ERR(fmt, arg...)  printk(KERN_ERR "(gpsdrv):"fmt"\n" , ## arg)
+#else /* Error msgs only */
+#define GPSDRV_ERR(fmt, arg...)  printk(KERN_ERR "(gpsdrv):"fmt"\n" , ## arg)
+#define GPSDRV_VER(fmt, arg...)
+#define GPSDRV_DBG(fmt, arg...)
+#endif
+
+static void gpsdrv_tsklet_write(unsigned long data);
+
+/* List of error codes returned by the gps driver*/
+enum {
+	GPS_ERR_FAILURE = -1,	/* check struct */
+	GPS_SUCCESS,
+	GPS_ERR_CLASS = -15,
+	GPS_ERR_CPY_TO_USR,
+	GPS_ERR_CPY_FRM_USR,
+	GPS_ERR_UNKNOWN,
+};
+
+/* Channel-9 details for GPS */
+#define GPS_CH9_PKT_HDR_SIZE		4
+#define GPS_CH9_PKT_NUMBER		0x9
+#define GPS_CH9_OP_WRITE		0x1
+#define GPS_CH9_OP_READ			0x2
+#define GPS_CH9_OP_COMPLETED_EVT	0x3
+
+/* Macros for Syncronising GPS registration and other R/W/ICTL operations */
+#define GPS_ST_REGISTERED	0
+#define GPS_ST_RUNNING		1
+
+/* Read time out defined to 10 seconds */
+#define GPSDRV_READ_TIMEOUT	10000
+/* Reg time out defined to 6 seconds */
+#define GPSDRV_REG_TIMEOUT	6000
+
+
+struct gpsdrv_event_hdr {
+	uint8_t opcode;
+	uint16_t plen;
+} __attribute__ ((packed));
+
+/*
+ * struct gpsdrv_data - gps internal driver data
+ * @gpsdrv_reg_completed - completion to wait for registration
+ * @streg_cbdata - registration feedback
+ * @state - driver state
+ * @tx_count - TX throttling/unthrottling
+ * @st_write - write ptr from ST
+ * @rx_list - Rx data SKB queue
+ * @tx_list - Tx data SKB queue
+ * @gpsdrv_data_q - dataq checked up on poll/receive
+ * @lock - spin lock
+ * @gpsdrv_tx_tsklet - gps write task
+ */
+
+struct gpsdrv_data {
+	struct completion gpsdrv_reg_completed;
+	char streg_cbdata;
+	unsigned long state;
+	unsigned char tx_count;
+	long (*st_write) (struct sk_buff *skb);
+	struct sk_buff_head rx_list;
+	struct sk_buff_head tx_list;
+	wait_queue_head_t gpsdrv_data_q;
+	spinlock_t lock;
+	struct tasklet_struct gpsdrv_tx_tsklet;
+};
 
 #define DEVICE_NAME     "tigps"
-#define HCI_TYPE_GPS	0x9
-
-/* Initialization TaskLet for performing GPS Write */
-DECLARE_TASKLET_DISABLED(gpsdrv_tx_tsklet, gpsdrv_tsklet_write, 0);
-
-/* Structure declerations for GPS char Driver Data */
-static struct gpsdrv_data *hgps;
 
 /***********Functions called from ST driver**********************************/
 
@@ -57,13 +126,10 @@ static struct gpsdrv_data *hgps;
  *          GPS_SUCCESS - On Success
  *          else suitable error code
  */
-long gpsdrv_st_recv(struct sk_buff *skb)
+long gpsdrv_st_recv(void *arg, struct sk_buff *skb)
 {
 	struct gpsdrv_event_hdr gpsdrv_hdr = { 0x00, 0x0000 };
-
-#ifdef VERBOSE
-	unsigned int i;
-#endif
+	struct gpsdrv_data *hgps = (struct gpsdrv_data *)arg;
 
 	/* SKB is NULL */
 	if (NULL == skb) {
@@ -72,7 +138,7 @@ long gpsdrv_st_recv(struct sk_buff *skb)
 	}
 
 	/* Sanity Check - To Check if the Rx Pkt is Channel -9 or not */
-	if (HCI_TYPE_GPS != skb->cb[0]) {
+	if (0x09 != skb->cb[0]) {
 		GPSDRV_ERR("Input SKB is not a Channel-9 packet");
 		return GPS_ERR_FAILURE;
 	}
@@ -86,10 +152,10 @@ long gpsdrv_st_recv(struct sk_buff *skb)
 		return -EINVAL;
 	}
 #ifdef VERBOSE
-	printk(KERN_INFO " data start >> \n");
-	for (i = 0; i < skb->len; i++)
-		printk(KERN_INFO " %x ", skb->data[i]);
-	printk(KERN_INFO "\n << end \n");
+	printk(KERN_INFO"data start >>\n");
+	print_hex_dump(KERN_INFO, ">in>", DUMP_PREFIX_NONE,
+			16, 1, skb->data, skb->len, 0);
+	printk(KERN_INFO"\n<< end\n");
 #endif
 	/* Check the Opcode */
 	if ((gpsdrv_hdr.opcode != GPS_CH9_OP_READ) && (gpsdrv_hdr.opcode != \
@@ -115,10 +181,10 @@ long gpsdrv_st_recv(struct sk_buff *skb)
 			(!skb_queue_empty(&hgps->tx_list))) {
 			/* Schedule the Tx-task let */
 			GPSDRV_VER(" Scheduling tasklet to write");
-			tasklet_schedule(&gpsdrv_tx_tsklet);
+			tasklet_schedule(&hgps->gpsdrv_tx_tsklet);
 		}
 		/* Free the received command complete SKB */
-		kfree(skb);
+		kfree_skb(skb);
 	}
 
 	return GPS_SUCCESS;
@@ -134,8 +200,10 @@ long gpsdrv_st_recv(struct sk_buff *skb)
  *  @data   Status update of GPS registration
  *  Returns: NULL
  */
-void gpsdrv_st_cb(char data)
+void gpsdrv_st_cb(void *arg, char data)
 {
+	struct gpsdrv_data *hgps = (struct gpsdrv_data *)arg;
+
 	GPSDRV_DBG(" Inside %s", __func__);
 	hgps->streg_cbdata = data;	/* ST registration callback  status */
 	complete_all(&hgps->gpsdrv_reg_completed);
@@ -143,14 +211,14 @@ void gpsdrv_st_cb(char data)
 }
 
 static struct st_proto_s gpsdrv_proto = {
-	.channelid = HCI_TYPE_GPS,
+	.chnl_id = 0x09,
+	.max_frame_size = 300,
+	.hdr_len = 3,
+	.offset_len_in_hdr = 1,
+	.len_size = 2,
+	.reserve = 1,
 	.recv = gpsdrv_st_recv,
 	.reg_complete_cb = gpsdrv_st_cb,
-	.max_frame_size = 300,
-	.header_size = 3,
-	.length_offset = 1,
-	.length_size = 2,
-	.gpio_id = ST_GPIO_GPS,
 };
 
 /** gpsdrv_tsklet_write Function
@@ -164,12 +232,13 @@ static struct st_proto_s gpsdrv_proto = {
 void gpsdrv_tsklet_write(unsigned long data)
 {
 	struct sk_buff *skb = NULL;
+	struct gpsdrv_data *hgps = (struct gpsdrv_data *)data;
 
 	GPSDRV_DBG(" Inside %s", __func__);
 
 	/* Perform sanity check of verifying the status
 				to perform an st_write */
-	if ((0 == hgps->tx_count)
+	if (((!hgps->st_write) || (0 == hgps->tx_count))
 			|| ((skb_queue_empty(&hgps->tx_list)))) {
 		GPSDRV_ERR("Sanity check Failed exiting %s", __func__);
 		return;
@@ -180,13 +249,13 @@ void gpsdrv_tsklet_write(unsigned long data)
 	spin_lock(&hgps->lock);
 	skb = skb_dequeue(&hgps->tx_list);
 	spin_unlock(&hgps->lock);
-	st_write(skb);
+	hgps->st_write(skb);
 	hgps->tx_count--;
 
 	/* Check if Tx queue and Tx count not empty */
 	if ((0 != hgps->tx_count) && (!skb_queue_empty(&hgps->tx_list))) {
 		/* Schedule the Tx-task let */
-		tasklet_schedule(&gpsdrv_tx_tsklet);
+		tasklet_schedule(&hgps->gpsdrv_tx_tsklet);
 	}
 
 	return;
@@ -207,14 +276,31 @@ int gpsdrv_open(struct inode *inod, struct file *file)
 {
 	int ret = 0;
 	unsigned long timeout = GPSDRV_REG_TIMEOUT;
+	struct gpsdrv_data *hgps;
 
 	GPSDRV_DBG(" Inside %s", __func__);
+
+	/* Allocate local resource memory */
+	hgps = kzalloc(sizeof(struct gpsdrv_data), GFP_KERNEL);
+	if (!(hgps)) {
+		GPSDRV_ERR("Can't allocate GPS data structure");
+		return -ENOMEM;
+	}
+
+	/* Initialize wait queue, skb queue head and
+	 * registration complete strucuture
+	 */
+	skb_queue_head_init(&hgps->rx_list);
+	skb_queue_head_init(&hgps->tx_list);
+	init_completion(&hgps->gpsdrv_reg_completed);
+	init_waitqueue_head(&hgps->gpsdrv_data_q);
+	spin_lock_init(&hgps->lock);
+
 	/* Check if GPS is already registered with ST */
 	if (test_and_set_bit(GPS_ST_REGISTERED, &hgps->state)) {
-		GPSDRV_ERR("GPS Registered/Registration in progress with ST \
-							,open called again?");
-
-		return GPS_ERR_ALREADY;
+		GPSDRV_ERR("GPS Registered/Registration in progress with ST"
+				" ,open called again?");
+		return -EAGAIN;
 	}
 
 	/* Initialize  gpsdrv_reg_completed so as to wait for completion
@@ -223,24 +309,24 @@ int gpsdrv_open(struct inode *inod, struct file *file)
 	*/
 	INIT_COMPLETION(hgps->gpsdrv_reg_completed);
 
+	gpsdrv_proto.priv_data = hgps;
 	/* Resgister GPS with ST */
 	ret = st_register(&gpsdrv_proto);
-
 	GPSDRV_VER(" st_register returned %d", ret);
 
 	/* If GPS Registration returned with error, then clear GPS_ST_REGISTERED
 	 * for future open calls and return the appropriate error code
 	 */
-	if (ret < 0 && ret != ST_ERR_PENDING) {
+	if (ret < 0 && ret != -EINPROGRESS) {
 		GPSDRV_ERR(" st_register failed");
 		clear_bit(GPS_ST_REGISTERED, &hgps->state);
-		if (ret == ST_ERR_ALREADY)
-			return GPS_ERR_ALREADY;
+		if (ret == -EINPROGRESS)
+			return -EAGAIN;
 		return GPS_ERR_FAILURE;
 	}
 
 	/* if returned status is pending, wait for the completion */
-	if (ret == ST_ERR_PENDING) {
+	if (ret == -EINPROGRESS) {
 		GPSDRV_VER(" GPS Register waiting for completion ");
 		timeout = wait_for_completion_timeout \
 		    (&hgps->gpsdrv_reg_completed, msecs_to_jiffies(timeout));
@@ -249,7 +335,7 @@ int gpsdrv_open(struct inode *inod, struct file *file)
 			GPSDRV_ERR("st_register failed-GPS Device \
 						Registration timed out");
 			clear_bit(GPS_ST_REGISTERED, &hgps->state);
-			return GPS_ERR_TIMEOUT;
+			return -ETIMEDOUT;
 		} else if (0 > hgps->streg_cbdata) {
 			GPSDRV_ERR("GPS Device Registration Failed-ST \
 								Reg CB called"
@@ -261,8 +347,11 @@ int gpsdrv_open(struct inode *inod, struct file *file)
 	GPSDRV_DBG(" gps registration complete ");
 
 	/* Assign the write callback pointer */
+	hgps->st_write = gpsdrv_proto.write;
 	hgps->tx_count = 1;
-	tasklet_enable(&gpsdrv_tx_tsklet);
+	file->private_data = hgps;	/* set drv data */
+	tasklet_init(&hgps->gpsdrv_tx_tsklet, (void *)gpsdrv_tsklet_write,
+			(unsigned long)hgps);
 	set_bit(GPS_ST_RUNNING, &hgps->state);
 
 	return GPS_SUCCESS;
@@ -279,26 +368,35 @@ int gpsdrv_open(struct inode *inod, struct file *file)
  */
 int gpsdrv_release(struct inode *inod, struct file *file)
 {
+	struct gpsdrv_data *hgps = file->private_data;
+
 	GPSDRV_DBG(" Inside %s", __func__);
 
 	/* Disabling task-let 1st & then un-reg to avoid
 	 * tasklet getting scheduled
 	 */
-	tasklet_disable(&gpsdrv_tx_tsklet);
+	tasklet_disable(&hgps->gpsdrv_tx_tsklet);
+	tasklet_kill(&hgps->gpsdrv_tx_tsklet);
 	/* Cleat registered bit if already registered */
 	if (test_and_clear_bit(GPS_ST_REGISTERED, &hgps->state)) {
-		if (st_unregister(gpsdrv_proto.channelid) < 0) {
+		if (st_unregister(&gpsdrv_proto) < 0) {
 			GPSDRV_ERR(" st_unregister failed");
 			/* Re-Enable the task-let if un-register fails */
-			tasklet_enable(&gpsdrv_tx_tsklet);
+			tasklet_enable(&hgps->gpsdrv_tx_tsklet);
 			return GPS_ERR_FAILURE;
 		}
 	}
 
 	/* Reset Tx count value and st_write function pointer */
 	hgps->tx_count = 0;
+	hgps->st_write = NULL;
 	clear_bit(GPS_ST_RUNNING, &hgps->state);
 	GPSDRV_VER(" st_unregister success");
+
+	skb_queue_purge(&hgps->rx_list);
+	skb_queue_purge(&hgps->tx_list);
+	kfree(hgps);
+	file->private_data = NULL;
 
 	return GPS_SUCCESS;
 }
@@ -322,6 +420,7 @@ ssize_t gpsdrv_read(struct file *file, char __user *data, size_t size,
 	int len = 0;
 	struct sk_buff *skb = NULL;
 	unsigned long timeout = GPSDRV_READ_TIMEOUT;
+	struct gpsdrv_data *hgps;
 
 	GPSDRV_DBG(" Inside %s", __func__);
 
@@ -331,6 +430,7 @@ ssize_t gpsdrv_read(struct file *file, char __user *data, size_t size,
 		return -EINVAL;
 	}
 
+	hgps = file->private_data;
 	/* Check if GPS is registered to perform read operation */
 	if (!test_bit(GPS_ST_RUNNING, &hgps->state)) {
 		GPSDRV_ERR("GPS Device is not running");
@@ -345,7 +445,7 @@ ssize_t gpsdrv_read(struct file *file, char __user *data, size_t size,
 	/* Check for timed out condition */
 	if (0 == timeout) {
 		GPSDRV_ERR("GPS Device Read timed out");
-		return GPS_ERR_TIMEOUT;
+		return -ETIMEDOUT;
 	}
 
 
@@ -361,15 +461,7 @@ ssize_t gpsdrv_read(struct file *file, char __user *data, size_t size,
 		GPSDRV_DBG("SKB length is Greater than requested size \
 				Returning the available length of SKB");
 
-		if (copy_to_user(data, skb->data, size)) {
-			GPSDRV_ERR(" Unable to copy to user space");
-			/* queue back data */
-			spin_lock(&hgps->lock);
-			skb_queue_head(&hgps->rx_list, skb);
-			spin_unlock(&hgps->lock);
-			return GPS_ERR_CPY_TO_USR;
-
-		}
+		copy_to_user(data, skb->data, size);
 		skb_pull(skb, size);
 
 		if (skb->len != 0) {
@@ -383,8 +475,8 @@ ssize_t gpsdrv_read(struct file *file, char __user *data, size_t size,
 	}
 
 #ifdef VERBOSE
-	for (len = 0; (skb) && (len < skb->len); len++)
-		GPSDRV_DBG(" %x ", skb->data[len]);
+	print_hex_dump(KERN_INFO, ">in>", DUMP_PREFIX_NONE,
+			16, 1, skb->data, skb->len, 0);
 #endif
 
 	/* Forward the data to the user */
@@ -401,7 +493,7 @@ ssize_t gpsdrv_read(struct file *file, char __user *data, size_t size,
 	}
 
 	len = skb->len;
-	kfree(skb);
+	kfree_skb(skb);
 	printk(KERN_DEBUG  "gpsdrv: total size read= %d", len);
 	return len;
 }
@@ -420,17 +512,11 @@ ssize_t gpsdrv_read(struct file *file, char __user *data, size_t size,
 ssize_t gpsdrv_write(struct file *file, const char __user *data,
 			 size_t size, loff_t *offset)
 {
-#ifdef VERBOSE
-	long count = 0;
-#endif
-	unsigned char channel = HCI_TYPE_GPS; /* GPS Channel number */
+	unsigned char channel = GPS_CH9_PKT_NUMBER; /* GPS Channel number */
 	/* Initialize gpsdrv_event_hdr with write opcode */
 	struct gpsdrv_event_hdr gpsdrv_hdr = { GPS_CH9_OP_WRITE, 0x0000 };
 	struct sk_buff *skb = NULL;
-
-	spin_lock(&hgps->lock);
-	GPSDRV_DBG(" Inside %s", __func__);
-	spin_unlock(&hgps->lock);
+	struct gpsdrv_data *hgps;
 
 	/* Validate input parameters */
 	if ((NULL == file) || (((NULL == data) || (0 == size)))) {
@@ -438,9 +524,20 @@ ssize_t gpsdrv_write(struct file *file, const char __user *data,
 		return -EINVAL;
 	}
 
+	hgps = file->private_data;
+
+	spin_lock(&hgps->lock);
+	GPSDRV_DBG(" Inside %s", __func__);
+	spin_unlock(&hgps->lock);
+
 	/* Check if GPS is registered to perform write operation */
 	if (!test_bit(GPS_ST_RUNNING, &hgps->state)) {
 		GPSDRV_ERR("GPS Device is not running");
+		return -EINVAL;
+	}
+
+	if (!hgps->st_write) {
+		GPSDRV_ERR(" Can't write to ST, hgps->st_write null ?");
 		return -EINVAL;
 	}
 
@@ -466,10 +563,11 @@ ssize_t gpsdrv_write(struct file *file, const char __user *data,
 		kfree_skb(skb);
 		return GPS_ERR_CPY_FRM_USR;
 	}
+
 #ifdef VERBOSE
 	GPSDRV_VER("start data..");
-	for (count = 0; count < size; count++)
-		printk(" 0x%02x ", skb->data[count]);
+	print_hex_dump(KERN_INFO, "<out<", DUMP_PREFIX_NONE,
+			16, 1, skb->data, size);
 	GPSDRV_VER("\n..end data");
 #endif
 
@@ -482,11 +580,11 @@ ssize_t gpsdrv_write(struct file *file, const char __user *data,
 		 *  send first SKB in tx_list queue.
 		 */
 		if (skb_queue_empty(&hgps->tx_list)) {
-			st_write(skb);
+			hgps->st_write(skb);
 		} else {
 			spin_lock(&hgps->lock);
 			skb_queue_tail(&hgps->tx_list, skb);
-			st_write(skb_dequeue(&hgps->tx_list));
+			hgps->st_write(skb_dequeue(&hgps->tx_list));
 			spin_unlock(&hgps->lock);
 		}
 
@@ -497,7 +595,7 @@ ssize_t gpsdrv_write(struct file *file, const char __user *data,
 		if ((0 != hgps->tx_count) && \
 					(!skb_queue_empty(&hgps->tx_list))) {
 			/* Schedule the Tx-task let */
-			tasklet_schedule(&gpsdrv_tx_tsklet);
+			tasklet_schedule(&hgps->gpsdrv_tx_tsklet);
 		}
 	} else {
 		/* Add it to TX queue */
@@ -526,6 +624,8 @@ static int gpsdrv_ioctl(struct inode *inode, struct file *file,
 {
 	struct sk_buff *skb = NULL;
 	int		retCode = GPS_SUCCESS;
+	struct gpsdrv_data *hgps;
+
 	GPSDRV_DBG(" Inside %s", __func__);
 
 	/* Validate input parameters */
@@ -533,6 +633,9 @@ static int gpsdrv_ioctl(struct inode *inode, struct file *file,
 		GPSDRV_ERR("Invalid input parameters passed to %s", __func__);
 		return -EINVAL;
 	}
+
+	hgps = file->private_data;
+
 	/* Check if GPS is registered to perform IOCTL operation */
 	if (!test_bit(GPS_ST_RUNNING, &hgps->state)) {
 		GPSDRV_ERR("GPS Device is not running");
@@ -568,15 +671,15 @@ static int gpsdrv_ioctl(struct inode *inode, struct file *file,
 	* available in the available SKB
 	*/
 		spin_lock(&hgps->lock);
-		skb = skb_dequeue(&hgps->rx_list);
-		if (skb != NULL) {
+		if (!skb_queue_empty(&hgps->rx_list)) {
+			skb = skb_dequeue(&hgps->rx_list);
 			*(unsigned int *)arg = skb->len;
 			/* Re-Store the SKB for furtur Read operations */
 			skb_queue_head(&hgps->rx_list, skb);
 		} else {
 			*(unsigned int *)arg = 0;
 		}
-		GPSDRV_DBG("returning %d \n", *(unsigned int *)arg);
+		GPSDRV_DBG("returning %d\n", *(unsigned int *)arg);
 		spin_unlock(&hgps->lock);
 		break;
 	default:
@@ -600,6 +703,7 @@ static int gpsdrv_ioctl(struct inode *inode, struct file *file,
 static unsigned int gpsdrv_poll(struct file *file, poll_table *wait)
 {
 	unsigned long mask = 0;
+	struct gpsdrv_data *hgps = file->private_data;
 
 	/* Check if GPS is registered to perform read operation */
 	if (!test_bit(GPS_ST_RUNNING, &hgps->state)) {
@@ -634,6 +738,9 @@ const struct file_operations gpsdrv_chrdev_ops = {
 
 /*********Functions called during insmod and delmod****************************/
 
+static int gpsdrv_major;		/* GPS major number */
+static struct class *gpsdrv_class;	/* GPS class during class_create */
+static struct device *gpsdrv_dev;	/* GPS dev during device_create */
 /** gpsdrv_init Function
  *  This function Initializes the gps driver parametes and exposes
  *  /dev/gps node to user space
@@ -645,60 +752,36 @@ const struct file_operations gpsdrv_chrdev_ops = {
 static int __init gpsdrv_init(void)
 {
 
-#ifdef VERBOSE
-	int err = 0;
-#endif
-
 	GPSDRV_DBG(" Inside %s", __func__);
-
-	/* Allocate local resource memory */
-	hgps = kzalloc(sizeof(struct gpsdrv_data), GFP_KERNEL);
-	if (!(hgps)) {
-		GPSDRV_ERR("Can't allocate GPS data structure");
-		return -ENOMEM;
-	}
 
 	/* Expose the device DEVICE_NAME to user space
 	 * And obtain the major number for the device
 	 */
-	hgps->gpsdrv_major = register_chrdev(0, DEVICE_NAME, \
+	gpsdrv_major = register_chrdev(0, DEVICE_NAME, \
 						&gpsdrv_chrdev_ops);
-	if (0 > hgps->gpsdrv_major) {
+	if (0 > gpsdrv_major) {
 		GPSDRV_ERR("Error when registering to char dev");
-		kfree(hgps);
-		return hgps->gpsdrv_major;
+		return GPS_ERR_FAILURE;
 	}
-	GPSDRV_VER(" %d: allocated %d, %d", err, hgps->gpsdrv_major, 0);
+	GPSDRV_VER(" %d: allocated %d, %d", err, gpsdrv_major, 0);
 
 	/*  udev */
-	hgps->gpsdrv_class = class_create(THIS_MODULE, DEVICE_NAME);
-	if (IS_ERR(hgps->gpsdrv_class)) {
+	gpsdrv_class = class_create(THIS_MODULE, DEVICE_NAME);
+	if (IS_ERR(gpsdrv_class)) {
 		GPSDRV_ERR(" Something went wrong in class_create");
-		kfree(hgps);
-		unregister_chrdev(hgps->gpsdrv_major, DEVICE_NAME);
+		unregister_chrdev(gpsdrv_major, DEVICE_NAME);
 		return GPS_ERR_CLASS;
 	}
 
-	hgps->gpsdrv_dev =
-	  device_create(hgps->gpsdrv_class, NULL, MKDEV(hgps->gpsdrv_major, 0),
+	gpsdrv_dev =
+	  device_create(gpsdrv_class, NULL, MKDEV(gpsdrv_major, 0),
 			  NULL, DEVICE_NAME);
-	if (IS_ERR(hgps->gpsdrv_dev)) {
+	if (IS_ERR(gpsdrv_dev)) {
 		GPSDRV_ERR(" Error in class_create");
-		kfree(hgps);
-		unregister_chrdev(hgps->gpsdrv_major, DEVICE_NAME);
-		class_unregister(hgps->gpsdrv_class);
-		class_destroy(hgps->gpsdrv_class);
+		unregister_chrdev(gpsdrv_major, DEVICE_NAME);
+		class_destroy(gpsdrv_class);
 		return GPS_ERR_CLASS;
 	}
-
-	/* Initialize wait queue, skb queue head and
-	 * registration complete strucuture
-	 */
-	skb_queue_head_init(&hgps->rx_list);
-	skb_queue_head_init(&hgps->tx_list);
-	init_completion(&hgps->gpsdrv_reg_completed);
-	init_waitqueue_head(&hgps->gpsdrv_data_q);
-	spin_lock_init(&hgps->lock);
 
 	return GPS_SUCCESS;
 }
@@ -712,18 +795,11 @@ static int __init gpsdrv_init(void)
 static void __exit gpsdrv_exit(void)
 {
 	GPSDRV_DBG(" Inside %s", __func__);
-	GPSDRV_VER(" Bye.. freeing up %d", hgps->gpsdrv_major);
+	GPSDRV_VER(" Bye.. freeing up %d", gpsdrv_major);
 
-	skb_queue_purge(&hgps->rx_list);
-	skb_queue_purge(&hgps->tx_list);
-	device_destroy(hgps->gpsdrv_class, MKDEV(hgps->gpsdrv_major, 0));
-
-	class_unregister(hgps->gpsdrv_class);
-	class_destroy(hgps->gpsdrv_class);
-
-	unregister_chrdev(hgps->gpsdrv_major, DEVICE_NAME);
-	tasklet_kill(&gpsdrv_tx_tsklet);
-	kfree(hgps);
+	device_destroy(gpsdrv_class, MKDEV(gpsdrv_major, 0));
+	class_destroy(gpsdrv_class);
+	unregister_chrdev(gpsdrv_major, DEVICE_NAME);
 }
 
 module_init(gpsdrv_init);
