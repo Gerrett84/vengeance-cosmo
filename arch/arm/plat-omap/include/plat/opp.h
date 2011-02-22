@@ -100,6 +100,7 @@ u8 __deprecated opp_get_opp_id(struct omap_opp *opp);
 
 void opp_init_cpufreq_table(struct device *dev,
 			    struct cpufreq_frequency_table **table);
+void opp_exit_cpufreq_table(struct cpufreq_frequency_table **table);
 
 struct device **opp_init_voltage_params(struct voltagedomain *voltdm,
 					int *dev_count);
@@ -192,6 +193,11 @@ static inline u8 __deprecated opp_get_opp_id(struct omap_opp *opp)
 static inline
 void opp_init_cpufreq_table(struct device *dev,
 			    struct cpufreq_frequency_table **table)
+{
+}
+
+static inline
+void opp_exit_cpufreq_table(struct cpufreq_frequency_table **table)
 {
 }
 
