@@ -43,4 +43,5 @@ obj-$(CONFIG_TWL6040_VIB)	+= twl6040-vib.o
 obj-y				+= ts0710mux/
 obj-$(CONFIG_SENSORS_MPU3050)   += mpu3050/
 obj-$(CONFIG_TSPDRV)	+= tspdrv/
+obj-$(CONFIG_CDC_TCXO)		+= cdc_tcxo.o
 obj-y				+= ti-st/
