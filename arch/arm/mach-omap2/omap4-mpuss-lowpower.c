@@ -703,11 +703,8 @@ void omap4_enter_lowpower(unsigned int cpu, unsigned int power_state)
 
 		save_secure_all();
 
-		save_gic_wakeupgen_secure();		
-
 		if (inst_clk_enab == 1)
 			clk_disable(l3_main_3_ick);
-
 
 		save_ivahd_tesla_regs();
 		save_l3instr_regs();
