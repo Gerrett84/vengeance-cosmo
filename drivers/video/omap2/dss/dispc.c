@@ -5148,11 +5148,12 @@ static void _omap_dispc_initial_config(void)
 	dispc_set_loadmode(OMAP_DSS_LOAD_FRAME_ONLY);
 
 	dispc_read_plane_fifo_sizes();
-	
-	//Enabling the DISPC_DIVISOR and setting the LCD to 1, Jags_Dec_08_2010
-	REG_FLD_MOD(DISPC_DIVISOR1, 1, 0, 0);
-	REG_FLD_MOD(DISPC_DIVISOR1, 1, 23, 16);
-	
+
+	/* Enabling the DISPC_DIVISOR and setting the LCD to 1 */
+	if (cpu_is_omap44xx()) {
+		REG_FLD_MOD(DISPC_DIVISOR1, 1, 0, 0);
+		REG_FLD_MOD(DISPC_DIVISOR1, 1, 23, 16);
+	}
 }
 
 int dispc_init(struct platform_device *pdev)
