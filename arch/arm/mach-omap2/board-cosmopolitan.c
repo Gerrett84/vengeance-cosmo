@@ -827,7 +827,7 @@ static struct cdc_tcxo_platform_data sdp4430_cdc_data = {
 			CDC_TCXO_REQ2POL | CDC_TCXO_REQ1POL,
 		CDC_TCXO_MREQ4 | CDC_TCXO_MREQ3 |
 			CDC_TCXO_MREQ2 | CDC_TCXO_MREQ1,
-		0, 0 },
+		CDC_TCXO_LDOEN1, 0 },
 };
 
 #if defined(CONFIG_MACH_LGE_COSMO_REV_A)
@@ -907,6 +907,12 @@ static struct twl4030_codec_data twl6040_codec = {
         .irq_base       = TWL6040_CODEC_IRQ_BASE,
 };
 
+static struct regulator_init_data sdp4430_clk32kg = {
+	.constraints = {
+		.valid_ops_mask         = REGULATOR_CHANGE_STATUS,
+	},
+};
+
 static struct twl4030_platform_data sdp4430_twldata = {
 	.irq_base	= TWL6030_IRQ_BASE,
 	.irq_end	= TWL6030_IRQ_END,
@@ -923,6 +929,7 @@ static struct twl4030_platform_data sdp4430_twldata = {
 	.vaux2		= &sdp4430_vaux2,
 	.vaux3		= &sdp4430_vaux3,
 	.usb            = &omap4_usbphy_data,
+        .clk32kg        = &sdp4430_clk32kg,
 	.madc           = &sdp4430_gpadc_data,
 	.bci            = &sdp4430_bci_data,
 
