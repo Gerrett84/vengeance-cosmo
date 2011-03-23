@@ -870,6 +870,7 @@ static struct regulator_init_data sdp4430_vaux1 = {
 			.enabled	= false,
 			.disabled	= true,
 		},
+		.always_on	= true,
 	},
 };
 
