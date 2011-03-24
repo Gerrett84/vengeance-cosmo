@@ -2498,6 +2498,12 @@ int ipu_pm_save_ctx(int proc_id)
 	app_loaded = (ipu_pm_get_state(proc_id) & APP_PROC_LOADED) >>
 								PROC_LD_SHIFT;
 
+	/* If already down don't kill it twice */
+	if (ipu_pm_get_state(proc_id) & SYS_PROC_DOWN) {
+		pr_warn("ipu already hibernated, no need to save again");
+		return 0;
+	}
+
 	/* Because of the current scheme, we need to check
 	 * if APPM3 is enable and we need to shut it down too
 	 * Sysm3 is the only want sending the hibernate message
