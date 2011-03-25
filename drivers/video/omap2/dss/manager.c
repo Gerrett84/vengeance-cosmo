@@ -421,6 +421,7 @@ struct overlay_cache_data {
 	enum omap_overlay_zorder zorder;
 	u32 p_uv_addr; /* relevent for NV12 format only */
 	u16 pic_height; /* for ilace */
+	bool pre_mult_alpha;
 };
 
 struct manager_cache_data {
@@ -911,6 +912,7 @@ static int configure_overlay(enum omap_plane plane)
 
 	dispc_enable_replication(plane, c->replication);
 
+	dispc_enable_pre_mult_alpha(plane, c->pre_mult_alpha);
 	dispc_set_burst_size(plane, c->burst_size);
 	dispc_set_zorder(plane, c->zorder);
 	dispc_enable_zorder(plane, 1);
@@ -1404,6 +1406,7 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 		oc->min_y_decim = ovl->info.min_y_decim;
 		oc->max_y_decim = ovl->info.max_y_decim;
 		oc->zorder = ovl->info.zorder;
+		oc->pre_mult_alpha = ovl->info.pre_mult_alpha;
 
 		oc->replication =
 			dss_use_replication(dssdev, ovl->info.color_mode);
@@ -1623,6 +1626,7 @@ int omap_dss_wb_apply(struct omap_overlay_manager *mgr, struct omap_writeback *w
 		oc->max_x_decim = ovl->info.max_x_decim;
 		oc->min_y_decim = ovl->info.min_y_decim;
 		oc->max_y_decim = ovl->info.max_y_decim;
+		oc->pre_mult_alpha = ovl->info.pre_mult_alpha;
 
 		oc->replication =
 			dss_use_replication(dssdev, ovl->info.color_mode);

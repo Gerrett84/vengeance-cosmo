@@ -564,6 +564,7 @@ struct omap_overlay_info {
 	bool out_wb; /* true when this overlay only feeds wb pipeline */
 	
 	enum omap_dss_overlay_s3d_type s3d_type;
+	bool pre_mult_alpha;
 };
 
 #define DSI1_GPIO_27 27
