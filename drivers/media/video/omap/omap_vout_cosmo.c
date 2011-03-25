@@ -597,7 +597,7 @@ enum omap_color_mode video_mode_to_dss_mode(struct v4l2_pix_format *pix)
 		mode = OMAP_DSS_COLOR_ARGB32;
 		break;
 	case V4L2_PIX_FMT_BGR32:
-		mode = OMAP_DSS_COLOR_RGBX32;
+		mode = OMAP_DSS_COLOR_RGBX24;
 		break;
 	default:
 		WARN(1, "Not Support pixel format(%d) in DSS", pix->pixelformat);
@@ -658,7 +658,7 @@ static int omap_vout_get_offset_tiler(enum omap_color_mode color,
 	case OMAP_DSS_COLOR_RGB24U:
 	case OMAP_DSS_COLOR_ARGB32:
 	case OMAP_DSS_COLOR_RGBA32:
-	case OMAP_DSS_COLOR_RGBX32:
+	case OMAP_DSS_COLOR_RGBX24:
 		ps = 4;
 	default:
 		WARN(1, "not supported color format %d\n", color);
@@ -1152,13 +1152,15 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 		return -EINVAL;
 	if ( ovl->manager->apply==NULL )
 		return -EINVAL;
-	
+
+#if 0	
 	if(out_width < ovlInfo.width/4 ||
 		out_height < ovlInfo.height/4)
 	{
 		WARN(1,"2d downscaling exceed\n");
 		return -EINVAL;
 	}	
+#endif
 
         vout = fInfo->vout;
         calc_overlay_window_params(vout, &ovlInfo);
