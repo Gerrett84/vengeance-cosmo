@@ -977,6 +977,7 @@ static struct regulator_init_data sdp4430_vana = {
 			.enabled	= false,
 			.disabled	= true,
 		},
+		.always_on	= true,
 	},
 };
 
@@ -993,6 +994,7 @@ static struct regulator_init_data sdp4430_vcxio = {
 			.enabled	= false,
 			.disabled	= true,
 		},
+		.always_on	= true,
 	},
 };
 
@@ -1009,6 +1011,7 @@ static struct regulator_init_data sdp4430_vdac = {
 			.enabled	= false,
 			.disabled	= true,
 		},
+		.always_on	= true,
 	},
 };
 
@@ -1025,6 +1028,7 @@ static struct regulator_init_data sdp4430_vusb = {
 			.enabled	= false,
 			.disabled	= true,
 		},
+		.always_on	= true,
 	},
 };
 
