@@ -645,6 +645,11 @@ static struct regulator_init_data sdp4430_vmmc = {
 		.valid_ops_mask	 = REGULATOR_CHANGE_VOLTAGE
 					| REGULATOR_CHANGE_MODE
 					| REGULATOR_CHANGE_STATUS,
+		.state_mem = {
+			.enabled        = false,
+			.disabled       = true,
+		},
+		.always_on	= true,
 	},
 	.num_consumer_supplies  = 1,
 	.consumer_supplies      = sdp4430_vmmc_supply,
