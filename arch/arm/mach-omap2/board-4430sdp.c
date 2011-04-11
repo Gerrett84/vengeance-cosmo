@@ -1042,7 +1042,6 @@ static struct regulator_init_data sdp4430_vusb = {
 			.enabled	= false,
 			.disabled	= true,
 		},
-		.always_on	= true,
 	},
 };
 
