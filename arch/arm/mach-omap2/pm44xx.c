@@ -605,7 +605,7 @@ static int omap4_pm_suspend(void)
 
 	/*
 	 * Clear all wakeup sources and keep
-	 * only Debug UART, Keypad, HSI and GPT1 interrupt
+	 * only Debug UART, Keypad, HSI(CAWAKE+DMA) and GPT1 interrupt
 	 * as a wakeup event from MPU/Device OFF
 	 */
 	omap4_wakeupgen_clear_all(cpu_id);
@@ -614,10 +614,8 @@ static int omap4_pm_suspend(void)
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_GPT1);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_PRCM);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_SYS_1N);
-
-#if defined(CONFIG_OMAP_HSI)
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_P1);
-#endif
+	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_DMA);
 
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_GPIO4);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_SYS_2N);
