@@ -36,7 +36,7 @@
 static struct powerdomain core_44xx_pwrdm = {
 	.name		  = "core_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_CORE_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 5,
@@ -69,7 +69,7 @@ static struct powerdomain core_44xx_pwrdm = {
 static struct powerdomain gfx_44xx_pwrdm = {
 	.name		  = "gfx_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_GFX_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_ON,
 	.banks		  = 1,
 	.context_offset	  = 0x24,
@@ -92,7 +92,7 @@ static struct powerdomain gfx_44xx_pwrdm = {
 static struct powerdomain abe_44xx_pwrdm = {
 	.name		  = "abe_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_ABE_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_RET_ON,
 //	.pwrsts		  = PWRSTS_RET_ON,
 	.pwrsts_logic_ret = PWRDM_POWER_OFF,
@@ -120,7 +120,7 @@ static struct powerdomain abe_44xx_pwrdm = {
 static struct powerdomain dss_44xx_pwrdm = {
 	.name		  = "dss_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_DSS_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF,
 	.banks		  = 1,
@@ -144,7 +144,7 @@ static struct powerdomain dss_44xx_pwrdm = {
 static struct powerdomain tesla_44xx_pwrdm = {
 	.name		  = "tesla_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_TESLA_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 3,
@@ -173,7 +173,7 @@ static struct powerdomain tesla_44xx_pwrdm = {
 static struct powerdomain wkup_44xx_pwrdm = {
 	.name		  = "wkup_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_WKUP_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_ON,
 	.banks		  = 1,
 	.context_offset	  = 0x24,
@@ -189,7 +189,7 @@ static struct powerdomain wkup_44xx_pwrdm = {
 static struct powerdomain cpu0_44xx_pwrdm = {
 	.name		  = "cpu0_pwrdm",
 	.prcm_offs	  = OMAP4430_PRCM_MPU_CPU0_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_RET_INA_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 1,
@@ -213,7 +213,7 @@ static struct powerdomain cpu0_44xx_pwrdm = {
 static struct powerdomain cpu1_44xx_pwrdm = {
 	.name		  = "cpu1_pwrdm",
 	.prcm_offs	  = OMAP4430_PRCM_MPU_CPU1_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 1,
@@ -237,7 +237,7 @@ static struct powerdomain cpu1_44xx_pwrdm = {
 static struct powerdomain emu_44xx_pwrdm = {
 	.name		  = "emu_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_EMU_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_ON,
 	.banks		  = 1,
 	.context_offset	  = 0x24,
@@ -250,7 +250,7 @@ static struct powerdomain emu_44xx_pwrdm = {
 };
 
 /* mpu_44xx_pwrdm: Modena processor and the Neon coprocessor power domain */
-static struct powerdomain mpu_44xx_pwrdm = {
+static struct powerdomain mpu_443x_pwrdm = {
 	.name		  = "mpu_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_MPU_MOD,
 	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
@@ -277,11 +277,29 @@ static struct powerdomain mpu_44xx_pwrdm = {
 	},
 };
 
+static struct powerdomain mpu_446x_pwrdm = {
+	.name		  = "mpu_pwrdm",
+	.prcm_offs	  = OMAP4430_PRM_MPU_MOD,
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4460),
+	.pwrsts		  = PWRSTS_RET_ON,
+	.pwrsts_logic_ret = PWRSTS_OFF_RET,
+	.banks		  = 2,
+	.pwrsts_mem_ret	= {
+		[0] = PWRSTS_OFF_RET,	/* mpu_l2 */
+		[1] = PWRDM_POWER_RET,	/* mpu_ram */
+	},
+	.pwrsts_mem_on	= {
+		[0] = PWRDM_POWER_ON,	/* mpu_l2 */
+		[1] = PWRDM_POWER_ON,	/* mpu_ram */
+	},
+};
+
+
 /* ivahd_44xx_pwrdm: IVA-HD power domain */
 static struct powerdomain ivahd_44xx_pwrdm = {
 	.name		  = "ivahd_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_IVAHD_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF,
 	.banks		  = 4,
@@ -312,7 +330,7 @@ static struct powerdomain ivahd_44xx_pwrdm = {
 static struct powerdomain cam_44xx_pwrdm = {
 	.name		  = "cam_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_CAM_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_ON,
 	.banks		  = 1,
 	.context_offset	  = 0x24,
@@ -335,7 +353,7 @@ static struct powerdomain cam_44xx_pwrdm = {
 static struct powerdomain l3init_44xx_pwrdm = {
 	.name		  = "l3init_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_L3INIT_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 1,
@@ -360,7 +378,7 @@ static struct powerdomain l3init_44xx_pwrdm = {
 static struct powerdomain l4per_44xx_pwrdm = {
 	.name		  = "l4per_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_L4PER_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_RET_ON,
 	.pwrsts_logic_ret = PWRSTS_OFF_RET,
 	.banks		  = 2,
@@ -390,7 +408,7 @@ static struct powerdomain l4per_44xx_pwrdm = {
 static struct powerdomain always_on_core_44xx_pwrdm = {
 	.name		  = "always_on_core_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_ALWAYS_ON_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_ON,
 };
 
@@ -398,7 +416,7 @@ static struct powerdomain always_on_core_44xx_pwrdm = {
 static struct powerdomain cefuse_44xx_pwrdm = {
 	.name		  = "cefuse_pwrdm",
 	.prcm_offs	  = OMAP4430_PRM_CEFUSE_MOD,
-	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP4430),
+	.omap_chip	  = OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 	.pwrsts		  = PWRSTS_OFF_ON,
 };
 
