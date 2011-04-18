@@ -16,6 +16,7 @@
 #include <linux/delay.h>
 #include <mach/omap4-common.h>
 #include <mach/omap4-wakeupgen.h>
+#include <asm/hardware/cache-l2x0.h>
 #include "pm.h"
 #include "prm.h"
 #include "pm.h"
@@ -83,20 +84,6 @@ static int omap4_idle_bm_check(void)
 	return 0;
 }
 
-static void pl310flush(void)
-{
-
-    u32 temp = 0;
-    u32 vaddr = OMAP44XX_L2CACHE_BASE + 0x730;
-    omap_writel(temp,vaddr);
-    while((omap_readl(vaddr) & 0x01))
-    		;
-    temp = omap_readl(vaddr);
-    omap_writel(temp,vaddr);
-
-}
-
-
 /**
  * omap4_enter_idle - Programs OMAP4 to enter the specified state
  * @dev: cpuidle device
@@ -125,8 +112,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	 */
 	if (dev->cpu) {
 		wmb();
-		pl310flush();
-		do_wfi();
+		DO_WFI();
 		goto return_sleep_time;
 	}
 
@@ -135,8 +121,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	 */
 	if (num_online_cpus() > 1) {
 		wmb();
-		pl310flush();
-		do_wfi();
+		DO_WFI();
 		goto return_sleep_time;
 	}
 
@@ -146,8 +131,7 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	cpu1_state = pwrdm_read_pwrst(cpu1_pd);
 	if (cpu1_state != PWRDM_POWER_OFF) {
 		wmb();
-		pl310flush();
-		do_wfi();
+		DO_WFI();
 		goto return_sleep_time;
 	}
 
@@ -174,7 +158,6 @@ static int omap4_enter_idle(struct cpuidle_device *dev,
 	omap4_set_pwrdm_state(mpu_pd, cx->mpu_state);
 	pwrdm_set_logic_retst(core_pd, cx->core_logic_state);
 	omap4_set_pwrdm_state(core_pd, cx->core_state);
-	pl310flush();
 
 	omap4_enter_sleep(dev->cpu, cx->cpu0_state);
 
