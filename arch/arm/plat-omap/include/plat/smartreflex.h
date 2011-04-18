@@ -211,6 +211,7 @@ struct omap_smartreflex_pmic_data {
 #define SR_CLASS1	0x1
 #define SR_CLASS2	0x2
 #define SR_CLASS3	0x3
+#define SR_CLASS1P5	0x4
 
 /**
  * omap_smartreflex_class_data : Structure to be populated by
@@ -230,7 +231,9 @@ struct omap_smartreflex_pmic_data {
 struct omap_smartreflex_class_data {
 	int (*enable)(struct voltagedomain *voltdm,
 			struct omap_volt_data *volt_data);
-	int (*disable)(struct voltagedomain *voltdm, int is_volt_reset);
+	int (*disable)(struct voltagedomain *voltdm,
+			struct omap_volt_data *volt_data,
+			int is_volt_reset);
 	int (*start)(struct voltagedomain *voltdm, void *class_priv_data);
 	int (*stop)(struct voltagedomain *voltdm, void *class_priv_data);
 	int (*configure)(struct voltagedomain *voltdm);
@@ -277,6 +280,7 @@ int sr_configure_minmax(struct voltagedomain *voltdm);
 
 /* API to register the smartreflex class driver with the smartreflex driver */
 int omap_sr_register_class(struct omap_smartreflex_class_data *class_data);
+bool is_sr_enabled(struct voltagedomain *voltdm);
 
 /* API to register the pmic specific data with the smartreflex driver. */
 void omap_sr_register_pmic(struct omap_smartreflex_pmic_data *pmic_data);
@@ -287,5 +291,9 @@ static inline void omap_smartreflex_disable_reset_volt(
 		struct voltagedomain *voltdm) {}
 static inline void omap_sr_register_pmic(
 		struct omap_smartreflex_pmic_data *pmic_data) {}
+static inline bool is_sr_enabled(struct voltagedomain *voltdm)
+{
+	return false;
+}
 #endif
 #endif
