@@ -1552,16 +1552,6 @@ static struct clk aess_fck = {
 };
 
 static struct clk bandgap_fclk = {
-	.name           = "bandgap_fclk",
-	.ops            = &clkops_omap2_dflt,
-	.enable_reg     = OMAP4430_CM_WKUP_BANDGAP_CLKCTRL,
-	.enable_bit     = OMAP4430_OPTFCLKEN_BGAP_32K_SHIFT,
-	.clkdm_name     = "l4_wkup_clkdm",
-	.parent         = &sys_32k_ck,
-	.recalc         = &followparent_recalc,
-};
-
-static struct clk bandgap_fclk = {
         .name           = "bandgap_fclk",
         .ops            = &clkops_omap2_dflt,
         .enable_reg     = OMAP4430_CM_WKUP_BANDGAP_CLKCTRL,
