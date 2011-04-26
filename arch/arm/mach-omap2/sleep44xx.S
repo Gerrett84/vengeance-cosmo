@@ -387,6 +387,12 @@ l2x_clean_inv:				@ Only for MPU OFF and last CPU
 	ldr	r0, [r8, #L2X0_OFFSET]
 	cmp	r0, #3
 	bne	do_WFI
+#ifdef CONFIG_PL310_ERRATA_727915
+	mov 	r0, #0x03
+	mov	r12, #0x100
+	dsb
+	smc	#0
+#endif
 	ldr	r2, =l2cache_base
 	ldr	r2, [r2]
 	ldr	r0, =0xffff
@@ -402,6 +408,12 @@ loop5:
 	ldr	r0, [r2, #L2X0_CACHE_SYNC]
 	ands	r0, r0, #0x1
 	bne	loop5
+#ifdef CONFIG_PL310_ERRATA_727915
+	mov 	r0, #0x00
+	mov	r12, #0x100
+	dsb
+	smc	#0
+#endif
 #endif
 do_WFI:
 	dsb				@ Necessary barriers before wfi
@@ -428,7 +440,7 @@ do_WFI:
 	bne	scu_gp_clear
 
 	mov     r0, #0x00
-	mov     r1, #0x00
+	mov     r12, #0x100
 	stmfd   r13!, {r4-r12, r14}
 	ldr	r12, =0x108		@ SCU power state secure API
 	dsb
