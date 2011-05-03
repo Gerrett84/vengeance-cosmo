@@ -616,6 +616,8 @@ static int omap4_pm_suspend(void)
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_SYS_1N);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_P1);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_DMA);
+	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_EMIF4_1);
+	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_EMIF4_2);
 
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_GPIO4);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_SYS_2N);
