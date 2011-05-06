@@ -331,7 +331,6 @@ restore_state:
 		omap_uart_resume_idle(1);
 		omap_uart_resume_idle(2);
 		omap_uart_resume_idle(3);
-		omap_hsi_resume_idle();
 	}
 
 	if (core_next_state < PWRDM_POWER_INACTIVE) {
@@ -380,6 +379,10 @@ static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 		/* Re-enable UART3 */
 		omap_writel(0x2, 0x4A009550);
 		omap_writel(0xD, 0x48020054);
+
+		/* Modem HSI wakeup */
+		if (omap_hsi_is_io_wakeup_from_hsi())
+			omap_hsi_wakeup();
 
 		/* usbhs remote wakeup */
 		usbhs_wakeup();
