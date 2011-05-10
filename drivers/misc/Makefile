@@ -44,4 +44,5 @@ obj-y				+= ts0710mux/
 obj-$(CONFIG_SENSORS_MPU3050)   += mpu3050/
 obj-$(CONFIG_TSPDRV)	+= tspdrv/
 obj-$(CONFIG_CDC_TCXO)		+= cdc_tcxo.o
+obj-$(CONFIG_OMAP4_DUTY_CYCLE)	+= omap4_duty_cycle.o
 obj-y				+= ti-st/
