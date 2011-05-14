@@ -682,14 +682,14 @@ static int omap4_pm_suspend(void)
 	
 
 	/* Enable Device OFF */
-	if (enable_off_mode)
+	if (volt_off_mode)
 		omap4_device_off_set_state(1);
 
 
 	omap4_enter_sleep(0, PWRDM_POWER_OFF);
 
 	/* Disable Device OFF state*/
-	if (enable_off_mode)
+	if (volt_off_mode)
 		omap4_device_off_set_state(0);
 
 	printk("count=%d, pre_mpu_m3_clkctrl=0x%x, CM_MPU_M3_MPU_M3_CLKCTRL: 0x%x\n", mpu_m3_clkctrl_count, mpu_m3_clkctrl, omap_readl(0x4A008920));
@@ -1046,6 +1046,15 @@ static int __init omap4_pm_init(void)
 
 	if (!cpu_is_omap44xx())
 		return -ENODEV;
+
+	/*
+	 * Keep volt/device off disabled by default
+	 * on 446x.
+	 */
+	if (cpu_is_omap446x())
+		volt_off_mode = 0;
+	else
+		volt_off_mode = 1;
 
 	pr_err("Power Management for TI OMAP4.\n");
 	mpu_pwrdm = pwrdm_lookup("mpu_pwrdm");
