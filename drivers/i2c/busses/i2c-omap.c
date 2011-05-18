@@ -274,18 +274,15 @@ static inline u16 omap_i2c_read_reg(struct omap_i2c_dev *i2c_dev, int reg)
 				(i2c_dev->regs[reg] << i2c_dev->reg_shift));
 }
 
-static int omap_i2c_hwspinlock_lock(struct omap_i2c_dev *dev)
+static void omap_i2c_hwspinlock_lock(struct omap_i2c_dev *dev)
 {
-	int ret = 0;
 	struct platform_device *pdev;
 	struct omap_i2c_bus_platform_data *pdata;
 
 	pdev = container_of(dev->dev, struct platform_device, dev);
 	pdata = pdev->dev.platform_data;
 	if (pdata->hwspinlock_lock)
-		ret = pdata->hwspinlock_lock(pdata->handle);
-
-	return ret;
+		pdata->hwspinlock_lock(pdata->handle);
 }
 
 
@@ -749,12 +746,10 @@ omap_i2c_dpll_configure(struct omap_i2c_dev *dev,
 	scll = (hsscll << OMAP_I2C_SCLL_HSSCLL) | fsscll;
 	sclh = (hssclh << OMAP_I2C_SCLH_HSSCLH) | fssclh;
 
-	/* Setup clock prescaler to obtain approx 12MHz I2C module clock: */
-	omap_i2c_write_reg(dev, OMAP_I2C_PSC_REG, psc);
+	dev->pscstate = psc;
+	dev->scllstate = scll;
+	dev->sclhstate = sclh;
 
-	/* SCL low and high time values */
-	omap_i2c_write_reg(dev, OMAP_I2C_SCLL_REG, scll);
-	omap_i2c_write_reg(dev, OMAP_I2C_SCLH_REG, sclh);
 }
 
 /*
@@ -779,18 +774,7 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	 * Ducati sub system I2C IRQ is enabled and disabled on i2c transfers.
 	 */
 
-	r = omap_i2c_hwspinlock_lock(dev);
-	if ( r < 0 ) {
-		dev_err(dev->dev, "hwspinlock timed out %d\n", r); 
-		goto fail_hwspinlock;
-		}
-
-	omap_i2c_unidle(dev);
-	enable_irq(dev->irq);
-
-	r = omap_i2c_wait_for_bb(dev);
-	if (r < 0)
-		goto out;
+	omap_i2c_hwspinlock_lock(dev);
 
 	spin_lock(&dev->dpll_lock);
 	if (dev->dpll_entry == 1) {
@@ -809,6 +793,13 @@ omap_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	}
 	spin_unlock(&dev->dpll_lock);
 
+	omap_i2c_unidle(dev);
+	enable_irq(dev->irq);
+
+	r = omap_i2c_wait_for_bb(dev);
+	if (r < 0)
+		goto out;
+
 	for (i = 0; i < num; i++) {
 		r = omap_i2c_xfer_msg(adap, &msgs[i], (i == (num - 1)));
 		if (r != 0)
@@ -821,7 +812,6 @@ out:
 	disable_irq_nosync(dev->irq);
 	omap_i2c_idle(dev);
 	omap_i2c_hwspinlock_unlock(dev);
-fail_hwspinlock:
 	return r;
 }
 
