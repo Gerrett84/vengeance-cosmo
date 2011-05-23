@@ -49,6 +49,7 @@
 #include "omap-hdmi.h"
 #endif
 
+
 static struct regulator *av_switch_reg;
 static int twl6040_power_mode;
 static int mcbsp_cfg;
@@ -518,8 +519,9 @@ static struct snd_soc_dai_driver dai[] = {
 		.stream_name = "Playback",
 		.channels_min = 2,
 		.channels_max = 8,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S32_LE,
+		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
+			SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
 	},
 },
 };
@@ -533,6 +535,7 @@ static const char *mm1_be[] = {
 		OMAP_ABE_BE_DMIC0,
 		OMAP_ABE_BE_DMIC1,
 		OMAP_ABE_BE_DMIC2,
+		OMAP_ABE_BE_VXREC,
 };
 
 static const char *mm2_be[] = {
@@ -542,6 +545,7 @@ static const char *mm2_be[] = {
 		OMAP_ABE_BE_DMIC0,
 		OMAP_ABE_BE_DMIC1,
 		OMAP_ABE_BE_DMIC2,
+		OMAP_ABE_BE_VXREC,
 };
 
 static const char *tones_be[] = {
@@ -918,6 +922,22 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.be_id = OMAP_ABE_DAI_DMIC2,
 		.ignore_suspend = 1,
 	},
+	{
+		.name = OMAP_ABE_BE_VXREC,
+		.stream_name = "VXREC",
+
+		/* ABE components - VxREC */
+		.cpu_dai_name = "omap-abe-vxrec-dai",
+		.platform_name = "omap-aess-audio",
+
+		/* no codec needed */
+		.codec_dai_name = "null-codec-dai",
+
+		.no_pcm = 1, /* don't create ALSA pcm for this */
+		.no_codec = 1, /* TODO: have a dummy CODEC */
+		.be_id = OMAP_ABE_DAI_VXREC,
+		.ignore_suspend = 1,
+	},
 };
 
 /* Audio machine driver */
@@ -932,13 +952,11 @@ static struct platform_device *sdp4430_snd_device;
 
 static int __init sdp4430_soc_init(void)
 {
-	struct i2c_adapter *adapter;
-	u8 gpoctl = 0;
 	int ret = 0;
 
-	if (!machine_is_omap_4430sdp() && !machine_is_omap4_panda() &&
+	if (!machine_is_omap_4430sdp() &&
 		!machine_is_omap_tabletblaze()) {
-		pr_debug("Not SDP4430, BlazeTablet or PandaBoard!\n");
+		pr_debug("Not SDP4430 or BlazeTablet\n");
 		return -ENODEV;
 	}
 	printk(KERN_INFO "SDP4430 SoC init\n");

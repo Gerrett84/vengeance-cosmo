@@ -137,6 +137,7 @@ config SND_OMAP_SOC_COSMOPOLITAN
 	select SND_SOC_DMIC
 	select SND_OMAP_SOC_DMIC
 	select SND_OMAP_SOC_ABE_DSP
+	select SND_OMAP_SOC_VXREC
 	help
 	  Say Y if you want to add support for SoC audio on LGE Cosmopolitan.
 
