@@ -371,6 +371,8 @@ struct hci_command {
 #define LL_WAKE_UP_IND	0x32
 #define LL_WAKE_UP_ACK	0x33
 
+#define HCILL_SLEEP_MODE_OPCODE 0xFD0C
+
 /* initialize and de-init ST LL */
 long st_ll_init(struct st_data_s *);
 long st_ll_deinit(struct st_data_s *);
@@ -418,6 +420,8 @@ struct ti_st_plat_data {
 	unsigned long baud_rate;
 	int (*suspend)(struct platform_device *, pm_message_t);
 	int (*resume)(struct platform_device *);
+	int (*chip_enable) (struct kim_data_s *kim_data);
+	int (*chip_disable) (struct kim_data_s *kim_data);
 };
 
 #endif /* TI_WILINK_ST_H */
