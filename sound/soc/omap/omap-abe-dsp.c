@@ -316,6 +316,8 @@ void abe_dsp_pm_put(void)
 	pm_runtime_put_sync(&pdev->dev);
 }
 
+static unsigned int context_loss_count = 1;
+
 void abe_dsp_shutdown(void)
 {
         /* TODO: do not use abe global structure to assign pdev */
@@ -327,6 +329,7 @@ void abe_dsp_shutdown(void)
 		abe_stop_event_generator();
 		udelay(250);
 		omap_device_set_rate(&pdev->dev, &pdev->dev, 0);
+		context_loss_count++;
 	}
 }
 
@@ -2251,12 +2254,11 @@ static struct snd_soc_platform_driver omap_aess_platform = {
 static int omap_pm_abe_get_dev_context_loss_count(struct device *dev)
 {
 	/*
-	 * Workaround: It forced ABE to make updating Firmware all the time during "Open" operation.
-	 * It added, because in current implementation we can't get right value of
-	 * context/memory lost flag.
+	 * Workaround: context_loss_count - is a fake counter that return
+	 * count of DSP power down operations.
 	 */
 #ifdef CONFIG_PM_DEBUG
-	return (abe->loss_count + 1);
+	return context_loss_count;
 #else
 	int ret;
 
