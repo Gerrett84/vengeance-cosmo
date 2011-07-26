@@ -76,37 +76,12 @@ static inline void hci_st_tx_complete(struct hci_st *hst, int pkt_type)
 
 /* ------- Interfaces to Shared Transport ------ */
 
-/* Called by ST layer to indicate protocol registration completion
- * status.hci_st_open() function will wait for signal from this
- * API when st_register() function returns ST_PENDING.
- */
-static void hci_st_registration_completion_cb(void *priv_data, char data)
-{
-	struct hci_st *lhst = (struct hci_st *)priv_data;
-	BTDRV_API_START();
-
-	/* hci_st_open() function needs value of 'data' to know
-	 * the registration status(success/fail),So have a back
-	 * up of it.
-	 */
-	lhst->streg_cbdata = data;
-
-	/* Got a feedback from ST for BT driver registration
-	 * request.Wackup hci_st_open() function to continue
-	 * it's open operation.
-	 */
-	complete(&lhst->wait_for_btdrv_reg_completion);
-
-	BTDRV_API_EXIT(0);
-}
-
 /* Called by Shared Transport layer when receive data is
  * available */
-static long hci_st_receive(void *priv_data, struct sk_buff *skb)
+static long hci_st_receive(struct sk_buff *skb)
 {
 	int err;
 	int len;
-	struct hci_st *lhst = (struct hci_st *)priv_data;
 
 	BTDRV_API_START();
 
@@ -118,13 +93,13 @@ static long hci_st_receive(void *priv_data, struct sk_buff *skb)
 		BTDRV_API_EXIT(-EFAULT);
 		return -EFAULT;
 	}
-	if (!lhst) {
+	if (!hst) {
 		kfree_skb(skb);
 		BT_DRV_ERR("Invalid hci_st memory,freeing SKB");
 		BTDRV_API_EXIT(-EFAULT);
 		return -EFAULT;
 	}
-	if (!test_bit(BT_DRV_RUNNING, &lhst->flags)) {
+	if (!test_bit(BT_DRV_RUNNING, &hst->flags)) {
 		kfree_skb(skb);
 		BT_DRV_ERR("Device is not running,freeing SKB");
 		BTDRV_API_EXIT(-EINVAL);
@@ -132,18 +107,20 @@ static long hci_st_receive(void *priv_data, struct sk_buff *skb)
 	}
 
 	len = skb->len;
-	skb->dev = (struct net_device *)lhst->hdev;
+	skb->dev = (struct net_device *)hst->hdev;
 
 	/* Forward skb to HCI CORE layer */
 	err = hci_recv_frame(skb);
 	if (err) {
-		kfree_skb(skb);
+// TI_SOLDEL 2011/03/14 cmlee, prevent double free [START]
+//		kfree_skb(skb);
+// TI_SOLDEL 2011/03/14 cmlee, prevent double free [END]
 		BT_DRV_ERR("Unable to push skb to HCI CORE(%d),freeing SKB",
 			   err);
 		BTDRV_API_EXIT(err);
 		return err;
 	}
-	lhst->hdev->stat.byte_rx += len;
+	hst->hdev->stat.byte_rx += len;
 
 	BTDRV_API_EXIT(0);
 	return 0;
@@ -154,9 +131,9 @@ static long hci_st_receive(void *priv_data, struct sk_buff *skb)
 /* Called from HCI core to initialize the device */
 static int hci_st_open(struct hci_dev *hdev)
 {
-	static struct st_proto_s hci_st_proto;
-	unsigned long timeleft;
 	int err;
+	struct hciif_filter_t filter;
+	struct hciif_hciCore_t hciCore;
 
 	BTDRV_API_START();
 
@@ -171,97 +148,24 @@ static int hci_st_open(struct hci_dev *hdev)
 		return 0;
 	}
 
-	/* Populate BT driver info required by ST */
-	memset(&hci_st_proto, 0, sizeof(hci_st_proto));
+	set_bit(HCIIF_CHAN_ACL, &filter.chan_mask);
+	set_bit(HCIIF_CHAN_SCO, &filter.chan_mask);
+	set_bit(HCIIF_CHAN_EVT, &filter.chan_mask);
+	filter.evt_type[0] = HCIIF_EVT_DEFUALT;
+	filter.evt_type[1] = 0;
 
-	/* BT driver ID */
-	hci_st_proto.type = ST_BT;
+	hciCore.is_hci_core = true;
+	hciCore.hci_core_recv = hci_st_receive;
 
-	/* Receive function which called from ST */
-	hci_st_proto.recv = hci_st_receive;
-
-	/* Packet match function may used in future */
-	hci_st_proto.match_packet = NULL;
-
-	/* Callback to be called when registration is pending */
-	hci_st_proto.reg_complete_cb = hci_st_registration_completion_cb;
-
-	/* This is write function pointer of ST. BT driver will make use of this
-	 * for sending any packets to chip. ST will assign and give to us, so
-	 * make it as NULL */
-	hci_st_proto.write = NULL;
-
-	/* send in the hst to be received at registration complete callback
-	 * and during st's receive
-	 */
-	hci_st_proto.priv_data = hst;
-
-	/* Register with ST layer */
-	err = st_register(&hci_st_proto);
-	if (err == -EINPROGRESS) {
-		/* Prepare wait-for-completion handler data structures.
-		 * Needed to syncronize this and st_registration_completion_cb()
-		 * functions.
-		 */
-		init_completion(&hst->wait_for_btdrv_reg_completion);
-
-		/* Reset ST registration callback status flag , this value
-		 * will be updated in hci_st_registration_completion_cb()
-		 * function whenever it called from ST driver.
-		 */
-		hst->streg_cbdata = -EINPROGRESS;
-
-		/* ST is busy with other protocol registration(may be busy with
-		 * firmware download).So,Wait till the registration callback
-		 * (passed as a argument to st_register() function) getting
-		 * called from ST.
-		 */
-		BT_DRV_DBG(" %s waiting for reg completion signal from ST",
-			   __func__);
-
-		timeleft =
-		    wait_for_completion_timeout
-		    (&hst->wait_for_btdrv_reg_completion,
-		     msecs_to_jiffies(BT_REGISTER_TIMEOUT));
-		if (!timeleft) {
-			BT_DRV_ERR("Timeout(%ld sec),didn't get reg"
-				   "completion signal from ST",
-				   BT_REGISTER_TIMEOUT / 1000);
-			BTDRV_API_EXIT(-ETIMEDOUT);
-			return -ETIMEDOUT;
-		}
-
-		/* Is ST registration callback called with ERROR value? */
-		if (hst->streg_cbdata != 0) {
-			BT_DRV_ERR("ST reg completion CB called with invalid"
-				   "status %d", hst->streg_cbdata);
-			BTDRV_API_EXIT(-EAGAIN);
-			return -EAGAIN;
-		}
-		err = 0;
-	} else if (err == -1) {
-		BT_DRV_ERR("st_register failed %d", err);
+	err = hciif_dev_up(NULL, &filter, &hciCore, &hst->client);
+	if(err)
+	{
+		BT_DRV_ERR("hciif_devUp failed, err = %d", err);
 		BTDRV_API_EXIT(-EAGAIN);
 		return -EAGAIN;
+
 	}
-
-	/* Do we have proper ST write function? */
-	if (hci_st_proto.write != NULL) {
-		/* We need this pointer for sending any Bluetooth pkts */
-		hst->st_write = hci_st_proto.write;
-	} else {
-		BT_DRV_ERR("failed to get ST write func pointer");
-
-		/* Undo registration with ST */
-		err = st_unregister(ST_BT);
-		if (err < 0)
-			BT_DRV_ERR("st_unregister failed %d", err);
-
-		hst->st_write = NULL;
-		BTDRV_API_EXIT(-EAGAIN);
-		return -EAGAIN;
-	}
-
+	
 	/* Registration with ST layer is completed successfully,
 	 * now chip is ready to accept commands from HCI CORE.
 	 * Mark HCI Device flag as RUNNING
@@ -284,18 +188,17 @@ static int hci_st_close(struct hci_dev *hdev)
 
 	err = 0;
 
-	/* Unregister from ST layer */
 	if (test_and_clear_bit(BT_ST_REGISTERED, &hst->flags)) {
-		err = st_unregister(ST_BT);
-		if (err != 0) {
-			BT_DRV_ERR("st_unregister failed %d", err);
+		ST_LOG("[%s] befor calling hciif_dev_down() ###############\n", __func__);
+		err = hciif_dev_down(hst->client);
+		if(err)
+		{
+			BT_DRV_ERR("hciif_close failed, err = %d", err);
 			BTDRV_API_EXIT(-EBUSY);
 			return -EBUSY;
 		}
 	}
-
-	hst->st_write = NULL;
-
+	
 	/* ST layer would have moved chip to inactive state.
 	 * So,clear HCI device RUNNING flag.
 	 */
@@ -342,21 +245,11 @@ static int hci_st_send_frame(struct sk_buff *skb)
 	BT_DRV_DBG(" %s: type %d len %d", hdev->name, bt_cb(skb)->pkt_type,
 		   skb->len);
 
-	/* Insert skb to shared transport layer's transmit queue.
-	 * Freeing skb memory is taken care in shared transport layer,
-	 * so don't free skb memory here.
-	 */
-	if (!hst->st_write) {
-		kfree_skb(skb);
-		BT_DRV_ERR(" Can't write to ST, st_write null?");
-		BTDRV_API_EXIT(-EAGAIN);
-		return -EAGAIN;
-	}
-	len = hst->st_write(skb);
+	len = hciif_send_frame(skb, hst->client);
 	if (len < 0) {
 		/* Something went wrong in st write , free skb memory */
 		kfree_skb(skb);
-		BT_DRV_ERR(" ST write failed (%ld)", len);
+		BT_DRV_ERR(" hciif_sendFrame failed (%ld)", len);
 		BTDRV_API_EXIT(-EAGAIN);
 		return -EAGAIN;
 	}
@@ -461,9 +354,27 @@ static int __init bt_drv_init(void)
 		BTDRV_API_EXIT(err);
 		return err;
 	}
+
+	err = hciif_init();
+	if (err) {
+		/* Remove HCI device (hciX) created in module init. */
+		hci_unregister_dev(hst->hdev);
+
+		/* Free HCI device memory */
+		hci_free_dev(hst->hdev);
+
+		/* Release local resource memory */
+		kfree(hst);
+
+		BT_DRV_ERR("hciif_init Failed");
+		BTDRV_API_EXIT(err);
+		return err;
+	}
+	
 	set_bit(BT_DRV_RUNNING, &hst->flags);
 
 	BTDRV_API_EXIT(err);
+	
 	return err;
 }
 
@@ -473,6 +384,7 @@ static void __exit bt_drv_exit(void)
 {
 	BTDRV_API_START();
 
+	hciif_exit();
 	/* Deallocate local resource's memory  */
 	if (hst) {
 		struct hci_dev *hdev = hst->hdev;

@@ -37,6 +37,9 @@
 #include <mach/display.h>
 #endif
 
+
+#include <mach/tiler.h>
+
 #ifdef RELEASE
 #include <../drivers/video/omap2/omapfb/omapfb.h>
 #undef DEBUG
@@ -174,7 +177,7 @@ static void FlushInternalSyncQueue(OMAPLFB_SWAPCHAIN *psSwapChain)
 		if(psFlipItem->bFlipped == OMAP_FALSE)
 		{
 			OMAPLFBFlip(psSwapChain,
-				(unsigned long)psFlipItem->sSysAddr);
+				(unsigned long)psFlipItem->sSysAddr->uiAddr);
 		}
 
 		/* If the command didn't complete, assume it did */
@@ -832,6 +835,16 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 		goto ErrorUnRegisterDisplayClient;
 	}
 	
+	
+	mutex_init(&psSwapChain->stHdmiTiler.lock);
+	psSwapChain->stHdmiTiler.alloc = false;
+	psSwapChain->stHdmiTiler.overlay = omap_dss_get_overlay(1);
+	{
+		extern int AllocTilerForHdmi(OMAPLFB_SWAPCHAIN *psSwapChain, OMAPLFB_DEVINFO *psDevInfo);
+		if ( AllocTilerForHdmi(psSwapChain, psDevInfo) )
+			ERROR_PRINTK("Alloc tiler memory for HDMI GUI cloning failed during creating swap chain\n");
+	}
+	
 	*phSwapChain = (IMG_HANDLE)psSwapChain;
 
 	return PVRSRV_OK;
@@ -905,6 +918,14 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	OMAPLFBFreeKernelMem(psSwapChain->psBuffer);
 	OMAPLFBFreeKernelMem(psSwapChain);
 
+	
+	if ( psSwapChain->stHdmiTiler.alloc )
+	{
+		tiler_free(psSwapChain->stHdmiTiler.pAddr);
+		psSwapChain->stHdmiTiler.alloc = false;
+	}
+	mutex_destroy(&psSwapChain->stHdmiTiler.lock);
+	
 	return PVRSRV_OK;
 }
 
@@ -1074,7 +1095,7 @@ static void OMAPLFBSyncIHandler(struct work_struct *work)
 		psFlipItem =
 			&psSwapChain->psFlipItems[psSwapChain->ulRemoveIndex];
 	}
-
+		
 ExitUnlock:
 	mutex_unlock(&psDevInfo->sSwapChainLockMutex);
 }
@@ -1132,6 +1153,15 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		psSwapChain->bFlushCommands == OMAP_TRUE)
 	{
 #endif
+
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)  
+		if ( psFlipCmd->hPrivateTag==0xBA551E5 ) {
+			psSwapChain->s3d_type = omap_dss_overlay_s3d_side_by_side;
+		} else {
+			psSwapChain->s3d_type = omap_dss_overlay_s3d_none;
+		}
+
+#endif
 		OMAPLFBFlip(psSwapChain,
 			(unsigned long)psBuffer->sSysAddr.uiAddr);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
@@ -1147,12 +1177,30 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	{
 		/* Mark the flip item as not flipped */
 		ulMaxIndex = psSwapChain->ulBufferCount - 1;
-		psFlipItem->bFlipped = OMAP_FALSE;
+		if(psSwapChain->ulInsertIndex == psSwapChain->ulRemoveIndex)
+		{
+
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)  
+			if ( psFlipCmd->hPrivateTag==0xBA551E5 ) {
+				psSwapChain->s3d_type = omap_dss_overlay_s3d_side_by_side;
+			} else {
+				psSwapChain->s3d_type = omap_dss_overlay_s3d_none;
+			}
+
+#endif
+			
+			OMAPLFBFlip(psSwapChain,
+				(unsigned long)psBuffer->sSysAddr.uiAddr);
+			psFlipItem->bFlipped = OMAP_TRUE;
+		}
+		else
+			psFlipItem->bFlipped = OMAP_FALSE;
 
 		/*
 		 * The buffer is queued here, must be consumed by the workqueue
 		 */
 		psFlipItem->hCmdComplete = (OMAP_HANDLE)hCmdCookie;
+		psFlipItem->bCmdCompleted = OMAP_FALSE;
 		psFlipItem->ulSwapInterval =
 			(unsigned long)psFlipCmd->ui32SwapInterval;
 		psFlipItem->sSysAddr = &psBuffer->sSysAddr;
@@ -1181,6 +1229,7 @@ ExitTrueUnlock:
 
 #if defined(LDM_PLATFORM)
 
+
 /*
  *  Function called when the driver must suspend
  */
@@ -1205,7 +1254,46 @@ void OMAPLFBDriverSuspend(void)
 		}
 
 		psDevInfo->bDeviceSuspended = OMAP_TRUE;
-		SetFlushStateInternalNoLock(psDevInfo, OMAP_TRUE);
+		SetFlushStateInternalNoLock(psDevInfo, OMAP_TRUE);		
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)		
+		{				
+			struct omap_overlay *overlay;
+			struct omap_overlay_info overlay_info;
+
+			overlay = omap_dss_get_overlay(0);
+			overlay->get_overlay_info( overlay, &overlay_info );
+			
+			if(overlay_info.s3d_type == omap_dss_overlay_s3d_interlaced)
+			{
+				struct omap_overlay_manager *manager;					
+				struct fb_info * framebuffer = psDevInfo->psLINFBInfo;		
+				
+				memset(overlay_info.vaddr,0x00,framebuffer->fix.line_length*framebuffer->var.yres);
+			
+				overlay->set_overlay_info(overlay, &overlay_info);		
+
+				manager = overlay->manager;
+
+				if (manager) {
+					manager->apply(manager);			
+					manager->wait_for_vsync(manager);								
+				}
+			}
+		}
+#endif
+
+		
+		if(psDevInfo->psSwapChain != NULL) {
+			mutex_lock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
+			if(psDevInfo->psSwapChain->stHdmiTiler.alloc)
+			{
+				extern void FreeTilerForHdmi(OMAPLFB_SWAPCHAIN *psSwapChain);
+				FreeTilerForHdmi(psDevInfo->psSwapChain);
+				printk("DOLCOM : free hdmi alloc memory\n");
+			}
+			mutex_unlock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
+		}
+		
 
 		mutex_unlock(&psDevInfo->sSwapChainLockMutex);
 	}
@@ -1239,6 +1327,18 @@ void OMAPLFBDriverResume(void)
 
 		mutex_unlock(&psDevInfo->sSwapChainLockMutex);
 	}
+	
+	if(psDevInfo->psSwapChain != NULL) {
+		mutex_lock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
+		if ( !psDevInfo->psSwapChain->stHdmiTiler.alloc )
+		{
+			extern int AllocTilerForHdmi(OMAPLFB_SWAPCHAIN *psSwapChain, OMAPLFB_DEVINFO *psDevInfo);
+			if ( AllocTilerForHdmi(psDevInfo->psSwapChain, psDevInfo) )
+				ERROR_PRINTK("Alloc tiler memory for HDMI GUI cloning failed during creating swap chain\n");
+		}
+		mutex_unlock(&psDevInfo->psSwapChain->stHdmiTiler.lock);
+	}
+	
 }
 #endif /* defined(LDM_PLATFORM) */
 
@@ -1453,6 +1553,12 @@ static OMAP_ERROR InitDev(OMAPLFB_DEVINFO *psDevInfo, int fb_idx)
 		psDevInfo->sDisplayInfo.ui32PhysicalHeightmm =
 			psLINFBInfo->var.height;
 	}
+
+
+#ifdef CONFIG_MACH_LGE_COSMOPOLITAN
+	psDevInfo->sDisplayInfo.ui32PhysicalWidthmm = 56;
+	psDevInfo->sDisplayInfo.ui32PhysicalHeightmm = 94;
+#endif
 
 	/* XXX: Page aligning with 16bpp causes the
 	 * position of framebuffer address to look in the wrong place.

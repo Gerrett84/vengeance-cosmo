@@ -407,7 +407,7 @@ static struct omap_volt_data omap44xx_vdd_iva_volt_data[] = {
 };
 
 static struct omap_volt_data omap44xx_vdd_core_volt_data[] = {
-	{.volt_nominal = 930000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
+	{.volt_nominal = 950000, .sr_errminlimit = 0xF4, .vp_errgain = 0x0C},
 	{.volt_nominal = 1100000, .sr_errminlimit = 0xF9, .vp_errgain = 0x16},
 };
 
@@ -430,7 +430,7 @@ static struct omap_vdd_dep_info omap34xx_vdd1_dep_info[] = {
 
 /* OMAP 4430 MPU Core VDD dependency table */
 static struct omap_vdd_dep_volt omap44xx_vddmpu_vddcore_data[] = {
-	{.main_vdd_volt = 930000, .dep_vdd_volt = 930000},
+	{.main_vdd_volt = 930000, .dep_vdd_volt = 950000},
 	{.main_vdd_volt = 1100000, .dep_vdd_volt = 1100000},
 	{.main_vdd_volt = 1260000, .dep_vdd_volt = 1100000},
 	{.main_vdd_volt = 1350000, .dep_vdd_volt = 1100000},
@@ -438,8 +438,8 @@ static struct omap_vdd_dep_volt omap44xx_vddmpu_vddcore_data[] = {
 };
 
 static struct omap_vdd_dep_volt omap44xx_vddiva_vddcore_data[] = {
-	{.main_vdd_volt = 928000, .dep_vdd_volt = 930000},
-	{.main_vdd_volt = 930000, .dep_vdd_volt = 930000},
+	{.main_vdd_volt = 928000, .dep_vdd_volt = 950000},
+	{.main_vdd_volt = 930000, .dep_vdd_volt = 950000},
 	{.main_vdd_volt = 1100000, .dep_vdd_volt = 1100000},
 	{.main_vdd_volt = 1260000, .dep_vdd_volt = 1100000},
 	{.main_vdd_volt = 0, .dep_vdd_volt = 0},
@@ -1468,31 +1468,31 @@ static void __init vdd_data_configure(struct omap_vdd_info *vdd)
 	strcpy(name, "vdd_");
 	strcat(name, vdd->voltdm.name);
 	vdd_debug = debugfs_create_dir(name, voltage_dir);
-	(void) debugfs_create_file("vp_errorgain", S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("vp_errorgain", S_IRUGO | S_IWUSR,
 				vdd_debug,
 				&(vdd->vp_reg.vpconfig_errorgain),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_smpswaittimemin", S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("vp_smpswaittimemin", S_IRUGO | S_IWUSR,
 				vdd_debug,
 				&(vdd->vp_reg.vstepmin_smpswaittimemin),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_stepmin", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_stepmin", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vstepmin_stepmin),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_smpswaittimemax", S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("vp_smpswaittimemax", S_IRUGO | S_IWUSR,
 				vdd_debug,
 				&(vdd->vp_reg.vstepmax_smpswaittimemax),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_stepmax", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_stepmax", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vstepmax_stepmax),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_vddmax", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_vddmax", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vlimitto_vddmax),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_vddmin", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_vddmin", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vlimitto_vddmin),
 				&vp_debug_fops);
-	(void) debugfs_create_file("vp_timeout", S_IRUGO | S_IWUGO, vdd_debug,
+	(void) debugfs_create_file("vp_timeout", S_IRUGO | S_IWUSR, vdd_debug,
 				&(vdd->vp_reg.vlimitto_timeout),
 				&vp_debug_fops);
 	(void) debugfs_create_file("curr_vp_volt", S_IRUGO, vdd_debug,
@@ -1503,12 +1503,12 @@ static void __init vdd_data_configure(struct omap_vdd_info *vdd)
 				(void *) vdd, &volt_users_dbg_fops);
 #ifdef CONFIG_OMAP_ABB
 	if (cpu_is_omap44xx() && !strcmp("vdd_iva", name))
-		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUGO,
+		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUSR,
 				vdd_debug, &(vdd->volt_data[2].abb_type));
 
 	if ((cpu_is_omap3630() || cpu_is_omap44xx())
 			&& !strcmp("vdd_mpu", name))
-		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUGO,
+		(void) debugfs_create_u8("fbb_enable", S_IRUGO | S_IWUSR,
 				vdd_debug, &(vdd->volt_data[3].abb_type));
 #endif
 #endif
@@ -2350,6 +2350,10 @@ struct voltagedomain *omap_voltage_domain_get(char *name)
 	return ERR_PTR(-EINVAL);
 }
 
+
+//#define PM_DVFS_DBG
+
+
 /**
  * omap_voltage_scale : API to scale the devices associated with a
  *			voltage domain vdd voltage.
@@ -2410,7 +2414,16 @@ int omap_voltage_scale(struct voltagedomain *voltdm, unsigned long volt)
 		if (freq == opp_get_rate(vdd->dev_list[i]))
 			continue;
 
+
+#ifndef PM_DVFS_DBG
 		opp_set_rate(vdd->dev_list[i], freq);
+#else
+		int nRet=0;
+		nRet = opp_set_rate(vdd->dev_list[i], freq);
+		//printk("voltdomain=%5s, voltage=%8ld, freg=%11ld, nRet=%d\n", vdd->voltdm.name, volt, freq, nRet);
+		printk("%dth, voltdomain=%5s, voltage=%8ld, freg=%11ld, dev_name=%s, string=%s, nRet=%d\n\n", i, vdd->voltdm.name, volt, freq, dev_name(vdd->dev_list[i]), dev_driver_string(vdd->dev_list[i]), nRet);
+#endif
+
 	}
 
 	if (!is_volt_scaled)

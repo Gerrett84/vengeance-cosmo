@@ -123,7 +123,11 @@ extern void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCP_DELACK_MIN	4U
 #define TCP_ATO_MIN	4U
 #endif
+#ifdef TARGET_CARRIER_ATT
+#define TCP_RTO_MAX	((unsigned)(10*HZ))
+#else
 #define TCP_RTO_MAX	((unsigned)(120*HZ))
+#endif
 #define TCP_RTO_MIN	((unsigned)(HZ/5))
 #define TCP_TIMEOUT_INIT ((unsigned)(3*HZ))	/* RFC 1122 initial RTO value	*/
 

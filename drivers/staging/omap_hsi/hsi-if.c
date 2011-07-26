@@ -50,6 +50,7 @@
 		(dst)->frame_size = (src)->frame_size; \
 		(dst)->channels = (src)->channels; \
 		(dst)->divisor = (src)->divisor; \
+		(dst)->counters = (src)->counters; \
 	} while (0)
 
 #define TXCONV(dst, src) \
@@ -316,6 +317,13 @@ void if_hsi_sw_reset(int ch)
 		channel->state = HSI_CHANNEL_STATE_UNAVAIL;
 	}
 	spin_unlock_bh(&hsi_iface.lock);
+}
+
+void if_hsi_get_fifo_occupancy(int ch, size_t *occ)
+{
+	struct if_hsi_channel *channel;
+	channel = &hsi_iface.channels[ch];
+	hsi_ioctl(channel->dev, HSI_IOCTL_GET_FIFO_OCCUPANCY, occ);
 }
 
 void if_hsi_cancel_read(int ch)

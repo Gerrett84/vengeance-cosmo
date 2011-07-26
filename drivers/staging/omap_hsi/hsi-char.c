@@ -272,10 +272,14 @@ static ssize_t hsi_char_write(struct file *file, const char __user *buf,
 		return -EINVAL;
 
 	data = kmalloc(count, GFP_ATOMIC);
-
+	if (!data) {
+		WARN_ON(1);
+		return -ENOMEM;
+	}
 	if (copy_from_user(data, (void __user *)buf, count)) {
 		ret = -EFAULT;
 		kfree(data);
+		goto out2;
 	} else {
 		ret = count;
 	}
@@ -342,6 +346,7 @@ static int hsi_char_ioctl(struct inode *inode, struct file *file,
 {
 	int ch = (int)file->private_data;
 	unsigned int state;
+	size_t occ;
 	struct hsi_rx_config rx_cfg;
 	struct hsi_tx_config tx_cfg;
 	int ret = 0;
@@ -393,6 +398,11 @@ static int hsi_char_ioctl(struct inode *inode, struct file *file,
 		break;
 	case CS_SW_RESET:
 		if_hsi_sw_reset(ch);
+		break;
+	case CS_GET_FIFO_OCCUPANCY:
+		if_hsi_get_fifo_occupancy(ch, &occ);
+		if (copy_to_user((void __user *)arg, &occ, sizeof(occ)))
+			ret = -EFAULT;
 		break;
 	default:
 		ret = -ENOIOCTLCMD;

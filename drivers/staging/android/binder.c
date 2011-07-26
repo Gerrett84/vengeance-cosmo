@@ -1735,6 +1735,8 @@ static void binder_transaction(struct binder_proc *proc,
 	t->work.type = BINDER_WORK_TRANSACTION;
 	list_add_tail(&t->work.entry, target_list);
 	tcomplete->type = BINDER_WORK_TRANSACTION_COMPLETE;
+    if(list_empty(&thread->todo))
+      INIT_LIST_HEAD(&thread->todo);
 	list_add_tail(&tcomplete->entry, &thread->todo);
 	if (target_wait)
 		wake_up_interruptible(target_wait);

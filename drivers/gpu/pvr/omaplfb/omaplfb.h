@@ -71,6 +71,19 @@ typedef struct PVRPDP_SWAPCHAIN_TAG
 	OMAP_BOOL                       bBlanked;
 	spinlock_t*                     psSwapChainLock;
 	void*                           pvDevInfo;
+	
+	struct {
+		struct mutex	lock;
+		u32				pAddr;				//physical address
+		unsigned long	pStride;			//physical st
+		void 			*vAddr;				//virtual address
+		unsigned long	vStride;			//virtual stride
+		size_t			pSize;				//alloc size in physical
+		bool			alloc;				//is allocated?
+		struct omap_overlay	*overlay;	//hdmi overlay
+	} stHdmiTiler;
+	enum omap_dss_overlay_s3d_type	s3d_type;
+	
 
 } OMAPLFB_SWAPCHAIN;
 

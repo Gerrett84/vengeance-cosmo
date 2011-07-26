@@ -66,10 +66,10 @@ int hsi_fifo_get_id(struct hsi_dev *hsi_ctrl, unsigned int channel,
 
 fifo_id_bk:
 	if (unlikely(err < 0)) {
-		dev_err(hsi_ctrl->dev, "Cannot map a fifo to the requested "
-			"params: channel:%d, port:%d; ERR=%d\n", channel, port,
-			fifo_index);
 		fifo_index = err;
+		dev_err(hsi_ctrl->dev, "Cannot map a FIFO to the requested "
+			"params: channel:%d, port:%d; ERR=%d\n", channel, port,
+			err);
 	}
 
 	return fifo_index;
@@ -154,6 +154,9 @@ int hsi_fifo_mapping(struct hsi_dev *hsi_ctrl, unsigned int mtype)
 				 base, HSI_HSR_MAPPING_FIFO_REG(i));
 			channel++;
 		}
+		if (hsi_ctrl->fifo_mapping_strategy == HSI_FIFO_MAPPING_UNDEF)
+			dev_dbg(hsi_ctrl->dev, "Fifo mapping : All FIFOs for "
+						"Port1\n");
 		hsi_ctrl->fifo_mapping_strategy = HSI_FIFO_MAPPING_ALL_PORT1;
 	} else if (mtype == HSI_FIFO_MAPPING_SSI) {
 		channel = 0;
@@ -175,10 +178,14 @@ int hsi_fifo_mapping(struct hsi_dev *hsi_ctrl, unsigned int mtype)
 			}
 		}
 
-		hsi_ctrl->fifo_mapping_strategy = HSI_FIFO_MAPPING_DEFAULT;
+		if (hsi_ctrl->fifo_mapping_strategy == HSI_FIFO_MAPPING_UNDEF)
+			dev_dbg(hsi_ctrl->dev, "Fifo mapping : 8 FIFOs per Port"
+						" (SSI compatible mode)\n");
+		hsi_ctrl->fifo_mapping_strategy = HSI_FIFO_MAPPING_SSI;
 	} else {
 		hsi_ctrl->fifo_mapping_strategy = HSI_FIFO_MAPPING_UNDEF;
-		dev_err(hsi_ctrl->dev, "Bad Fifo strategy request\n");
+		dev_err(hsi_ctrl->dev, "Bad Fifo strategy request : %d\n",
+			mtype);
 		err = -EINVAL;
 	}
 
@@ -202,7 +209,7 @@ long hsi_hst_bufstate_f_reg(struct hsi_dev *hsi_ctrl,
 	int fifo;
 	if (hsi_driver_device_is_hsi(to_platform_device(hsi_ctrl->dev))) {
 		fifo = hsi_fifo_get_id(hsi_ctrl, channel, port);
-		if (fifo < 0)
+		if (unlikely(fifo < 0))
 			return fifo;
 		else
 			return HSI_HST_BUFSTATE_FIFO_REG(fifo);
@@ -228,7 +235,7 @@ long hsi_hsr_bufstate_f_reg(struct hsi_dev *hsi_ctrl,
 	int fifo;
 	if (hsi_driver_device_is_hsi(to_platform_device(hsi_ctrl->dev))) {
 		fifo = hsi_fifo_get_id(hsi_ctrl, channel, port);
-		if (fifo < 0)
+		if (unlikely(fifo < 0))
 			return fifo;
 		else
 			return HSI_HSR_BUFSTATE_FIFO_REG(fifo);
@@ -280,7 +287,7 @@ long hsi_hsr_buffer_reg(struct hsi_dev *hsi_ctrl,
 	int fifo;
 	if (hsi_driver_device_is_hsi(to_platform_device(hsi_ctrl->dev))) {
 		fifo = hsi_fifo_get_id(hsi_ctrl, channel, port);
-		if (fifo < 0)
+		if (unlikely(fifo < 0))
 			return fifo;
 		else
 			return HSI_HSR_BUFFER_FIFO_REG(fifo);
@@ -288,3 +295,23 @@ long hsi_hsr_buffer_reg(struct hsi_dev *hsi_ctrl,
 		return HSI_HSR_BUFFER_CH_REG(port, channel);
 	}
 }
+
+/**
+ * hsi_get_rx_fifo_occupancy - Return the size of data remaining
+ *				in the given FIFO
+ * @hsi_ctrl - HSI controler data
+ * @fifo - FIFO to look at
+ *
+ * Returns the number of frames (32bits) remaining in the FIFO
+ */
+u8 hsi_get_rx_fifo_occupancy(struct hsi_dev *hsi_ctrl, u8 fifo)
+{
+	void __iomem *base = hsi_ctrl->base;
+	int hsr_mapping, mapping_words;
+
+	hsr_mapping = hsi_inl(base, HSI_HSR_MAPPING_FIFO_REG(fifo));
+	mapping_words = (hsr_mapping >> HSI_HST_MAPPING_THRESH_OFFSET) & 0xF;
+
+	return mapping_words;
+}
+

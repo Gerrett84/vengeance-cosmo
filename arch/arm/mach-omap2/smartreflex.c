@@ -921,13 +921,13 @@ static int __init omap_smartreflex_probe(struct platform_device *pdev)
 	strcpy(name, "sr_");
 	strcat(name, sr_info->voltdm->name);
 	dbg_dir = debugfs_create_dir(name, sr_dbg_dir);
-	(void) debugfs_create_file("autocomp", S_IRUGO | S_IWUGO, dbg_dir,
+	(void) debugfs_create_file("autocomp", S_IRUGO | S_IWUSR, dbg_dir,
 				(void *)sr_info, &pm_sr_fops);
-	(void) debugfs_create_file("errweight", S_IRUGO | S_IWUGO, dbg_dir,
+	(void) debugfs_create_file("errweight", S_IRUGO | S_IWUSR, dbg_dir,
 				&sr_info->err_weight, &sr_params_fops);
-	(void) debugfs_create_file("errmaxlimit", S_IRUGO | S_IWUGO, dbg_dir,
+	(void) debugfs_create_file("errmaxlimit", S_IRUGO | S_IWUSR, dbg_dir,
 				&sr_info->err_maxlimit, &sr_params_fops);
-	(void) debugfs_create_file("errminlimit", S_IRUGO | S_IWUGO, dbg_dir,
+	(void) debugfs_create_file("errminlimit", S_IRUGO | S_IWUSR, dbg_dir,
 				&sr_info->err_minlimit, &sr_params_fops);
 
 #endif

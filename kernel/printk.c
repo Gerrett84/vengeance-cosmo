@@ -145,7 +145,9 @@ EXPORT_SYMBOL(console_set_on_cmdline);
 /* Flag: console code may call schedule() */
 static int console_may_schedule;
 
-#ifdef CONFIG_PRINTK
+#if 1 // Disable PRINTK in User Mode Build
+//#ifdef CONFIG_PRINTK
+
 
 static char __log_buf[__LOG_BUF_LEN];
 static char *log_buf = __log_buf;
@@ -665,6 +667,7 @@ static int have_callable_console(void)
  *
  * See the vsnprintf() documentation for format string extensions over C99.
  */
+#ifdef CONFIG_PRINTK // Disable PRINTK in User Mode Build
 
 asmlinkage int printk(const char *fmt, ...)
 {
@@ -685,7 +688,7 @@ asmlinkage int printk(const char *fmt, ...)
 
 	return r;
 }
-
+#endif // Disable PRINTK in User Mode Build
 /* cpu currently holding logbuf_lock */
 static volatile unsigned int printk_cpu = UINT_MAX;
 
@@ -754,6 +757,8 @@ static inline void printk_delay(void)
 		}
 	}
 }
+
+#ifdef CONFIG_PRINTK // Disable PRINTK in User Mode Build
 
 asmlinkage int vprintk(const char *fmt, va_list args)
 {
@@ -892,6 +897,7 @@ out_restore_irqs:
 EXPORT_SYMBOL(printk);
 EXPORT_SYMBOL(vprintk);
 
+#endif // Disable PRINTK in User Mode Build
 #else
 
 static void call_console_drivers(unsigned start, unsigned end)

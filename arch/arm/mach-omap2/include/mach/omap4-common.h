@@ -42,6 +42,13 @@
 #define HAL_SAVEGIC_INDEX		0x1d
 
 /*
+ * Secure HAL, PPA services available
+ */
+#define PPA_SERVICE_PL310_POR		0x23
+#define PPA_SERVICE_NS_SMP		0x25
+
+#define PL310_POR			5
+/*
  * Secure HAL API flags
  */
 #define FLAG_START_CRITICAL		0x4
@@ -60,7 +67,10 @@
 #define OMAP4_USBHOST_CLKSEL_UTMI_P2_EXT_P1_EXT		0x3
 
 /* L2 controller AUXCTRL value */
+#define OMAP4_L2X0_AUXCTL_VALUE_ES1			0x0e050000
 #define OMAP4_L2X0_AUXCTL_VALUE				0x1e470000
+
+#define A9_ES1_REV					0x410FC091
 
 #ifndef __ASSEMBLER__
 /*

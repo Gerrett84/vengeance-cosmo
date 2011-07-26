@@ -29,6 +29,14 @@
  *
  */
 
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//
+// Important Notice
+//		In LGE Cosmo, this file is replaced by omap_vout_cosmo.c
+//		If there is important patches, apply patches to omap_vout_cosmo.c
+//
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/vmalloc.h>
@@ -873,19 +881,6 @@ enum omap_color_mode video_mode_to_dss_mode(struct v4l2_pix_format *pix,
 	return mode;
 }
 
-#if 0 /* Used for non Tiler NV12 */
-/* helper function: for NV12, returns uv buffer address given single buffer
- * for yuv - y buffer will still be in the input.
- * used only for non-TILER case
-*/
-u32 omapvid_get_uvbase_nv12(u32 paddr, int height, int width)
-{
-	u32 puv_addr = 0;
-
-	puv_addr = (paddr + (height * width));
-	return puv_addr;
-}
-#endif
 /*
  * Setup the overlay
  */
@@ -1008,42 +1003,6 @@ int omapvid_init(struct omap_vout_device *vout, u32 addr, u32 uv_addr)
 		outh = win->w.height;
 		posx = win->w.left;
 		posy = win->w.top;
-		switch (vout->rotation) {
-		case dss_rotation_90_degree:
-			/* Invert the height and width for 90
-			 * and 270 degree rotation
-			 */
-			temp = outw;
-			outw = outh;
-			outh = temp;
-#ifndef CONFIG_ARCH_OMAP4
-			posy = (timing->y_res - win->w.width) - win->w.left;
-			posx = win->w.top;
-#endif
-			break;
-
-		case dss_rotation_180_degree:
-#ifndef CONFIG_ARCH_OMAP4
-			posx = (timing->x_res - win->w.width) - win->w.left;
-			posy = (timing->y_res - win->w.height) - win->w.top;
-#endif
-			break;
-
-		case dss_rotation_270_degree:
-			temp = outw;
-			outw = outh;
-			outh = temp;
-#ifndef CONFIG_ARCH_OMAP4
-			posy = win->w.left;
-			posx = (timing->x_res - win->w.height) - win->w.top;
-#endif
-			break;
-
-		default:
-			posx = win->w.left;
-			posy = win->w.top;
-			break;
-		}
 
 		ret = omapvid_setup_overlay(vout, ovl, posx, posy,
 				outw, outh, addr, uv_addr);
@@ -1263,9 +1222,17 @@ void omap_vout_isr(void *arg, unsigned int irqstatus)
 	cur_display = ovl->manager->device;
 
 	if (cur_display->channel == OMAP_DSS_CHANNEL_LCD)
+	{	/* JamesLee :: for Video Mode */
 		irq = DISPC_IRQ_FRAMEDONE;
+		if(cur_display->phy.dsi.mode == OMAP_DSI_MODE_VIDEO)
+			irq = DISPC_IRQ_VSYNC;
+	}
 	else if (cur_display->channel == OMAP_DSS_CHANNEL_LCD2)
+	{	/* JamesLee :: for Video Mode */
 		irq = DISPC_IRQ_FRAMEDONE2;
+		if(cur_display->phy.dsi.mode == OMAP_DSI_MODE_VIDEO)
+			irq = DISPC_IRQ_VSYNC2;
+	}
 
 	spin_lock_irqsave(&vout->vbq_lock, flags);
 
@@ -1614,8 +1581,9 @@ static int omap_vout_buffer_prepare(struct videobuf_queue *q,
 			dest_frame_index);
 	/*set dma dest burst mode for VRFB */
 	omap_set_dma_dest_burst_mode(tx->dma_ch, OMAP_DMA_DATA_BURST_16);
-	omap_dma_set_global_params(DMA_DEFAULT_ARB_RATE, 0x20, 0);
 
+
+//	omap_dma_set_global_params(DMA_DEFAULT_ARB_RATE, 0x20, 0);
 #ifdef CONFIG_PM
 	if (!cpu_is_omap44xx() && pdata->set_min_bus_tput) {
 		if (cpu_is_omap3630()) {
@@ -2183,7 +2151,6 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *fh,
 		vout->vrfb_bpp = 2;
 
 	/* set default crop and win */
-	omap_vout_new_format(&vout->pix, &vout->fbuf, &vout->crop, &vout->win);
 
 	/* Save the changes in the overlay strcuture */
 	ret = omapvid_init(vout, 0, 0);
@@ -2289,8 +2256,6 @@ static int vidioc_s_fmt_vid_overlay(struct file *file, void *fh,
 			info.pos_y = vout->win.w.top;
 			info.out_width = vout->win.w.width;
 			info.out_height = vout->win.w.height;
-                        if (cpu_is_omap44xx())
-                            info.zorder = vout->win.zorder;
 
 			if (ovl->set_overlay_info(ovl, &info))
 				return -EINVAL;
@@ -2336,8 +2301,6 @@ static int vidioc_g_fmt_vid_overlay(struct file *file, void *fh,
 	win->w = vout->win.w;
 	win->field = vout->win.field;
 	win->global_alpha = vout->win.global_alpha;
-        if (cpu_is_omap44xx())
-            win->zorder = vout->win.zorder;
 
 	if (ovl->manager && ovl->manager->get_manager_info) {
 		ovl->manager->get_manager_info(ovl->manager, &info);

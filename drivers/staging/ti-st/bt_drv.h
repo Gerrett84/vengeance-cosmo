@@ -24,6 +24,8 @@
 #ifndef _BT_DRV_H
 #define _BT_DRV_H
 
+#include "hci_if_drv.h"
+
 /* Bluetooth Driver Version */
 #define VERSION               "1.0"
 
@@ -56,6 +58,9 @@ struct hci_st {
 	 * hci_st_open() and hci_st_registration_completion_cb()
 	 * functions.*/
 	struct completion wait_for_btdrv_reg_completion;
+
+	/* Pointer to Client structure */
+	struct hciif_client *client;
 };
 
 #endif

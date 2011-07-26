@@ -15,6 +15,7 @@
  * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
  * WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
+#include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/err.h>
 #include <linux/clk.h>
@@ -26,162 +27,253 @@
 #include <mach/omap_hsi.h>
 #include <plat/omap_hwmod.h>
 #include <plat/omap_device.h>
+#include <plat/control.h>
 #include <linux/hsi_driver_if.h>
 #include "clock.h"
+#include "mux.h"
 #include <asm/clkdev.h>
+#include <../drivers/staging/omap_hsi/hsi_driver.h>
 
-#define OMAP_HSI_PLATFORM_DEVICE_DRIVER_NAME  "omap_hsi"
-#define OMAP_HSI_HWMOD_NAME  "hsi"
-#define OMAP_HSI_HWMOD_CLASSNAME  "hsi"
+#define OMAP_HSI_PLATFORM_DEVICE_DRIVER_NAME	"omap_hsi"
+#define OMAP_HSI_PLATFORM_DEVICE_NAME		"omap_hsi.0"
+#define OMAP_HSI_HWMOD_NAME			"hsi"
+#define OMAP_HSI_HWMOD_CLASSNAME		"hsi"
+#define OMAP_HSI_PADCONF_CAWAKE_PIN		"usbb1_ulpitll_clk.hsi1_cawake"
 
-#define	hsi_inl(p)	inl((unsigned long) p)
-#define	hsi_outl(v, p)	outl(v, (unsigned long) p)
 
-#ifdef HSI_CONTEXT_SAVE_RESTORE
-static void hsi_set_mode(struct platform_device *pdev, u32 mode)
-{
-	struct hsi_platform_data *pdata = pdev->dev.platform_data;
-	void __iomem *base = OMAP2_IO_ADDRESS(pdev->resource[0].start);
-	int port;
-
-	for (port = 1; port <= pdata->num_ports; port++) {
-		/* FIXME - to update: need read/modify/write or something else:
-		 * this register now also contains flow and wake ctrl
-		 */
-		hsi_outl(mode, base + HSI_HST_MODE_REG(port));
-		hsi_outl(mode, base + HSI_HSR_MODE_REG(port));
-	}
-}
-
-static void hsi_save_mode(struct platform_device *pdev)
-{
-	struct hsi_platform_data *pdata = pdev->dev.platform_data;
-	void __iomem *base = OMAP2_IO_ADDRESS(pdev->resource[0].start);
-	struct port_ctx *p;
-	int port;
-
-	for (port = 1; port <= pdata->num_ports; port++) {
-		p = &pdata->ctx.pctx[port - 1];
-		p->hst.mode = hsi_inl(base + HSI_HST_MODE_REG(port));
-		p->hsr.mode = hsi_inl(base + HSI_HSR_MODE_REG(port));
-	}
-}
-
-static void hsi_restore_mode(struct platform_device *pdev)
-{
-	struct hsi_platform_data *pdata = pdev->dev.platform_data;
-	void __iomem *base = OMAP2_IO_ADDRESS(pdev->resource[0].start);
-	struct port_ctx *p;
-	int port;
-
-	for (port = 1; port <= pdata->num_ports; port++) {
-		p = &pdata->ctx.pctx[port - 1];
-		hsi_outl(p->hst.mode, base + HSI_HST_MODE_REG(port));
-		hsi_outl(p->hsr.mode, base + HSI_HSR_MODE_REG(port));
-	}
-}
-#endif /* HSI_CONTEXT_SAVE_RESTORE */
-
-#ifdef HSI_CONTEXT_SAVE_RESTORE
-static void hsi_save_ctx(struct platform_device *pdev)
-{
-	struct hsi_platform_data *pdata = pdev->dev.platform_data;
-	void __iomem *base = OMAP2_IO_ADDRESS(pdev->resource[0].start);
-	struct port_ctx *p;
-	int port;
-
-	pdata->ctx.loss_count = omap_pm_get_dev_context_loss_count(&pdev->dev);
-	pdata->ctx.sysconfig = hsi_inl(base + HSI_SYS_SYSCONFIG_REG);
-	pdata->ctx.gdd_gcr = hsi_inl(base + HSI_GDD_GCR_REG);
-	for (port = 1; port <= pdata->num_ports; port++) {
-		p = &pdata->ctx.pctx[port - 1];
-		p->sys_mpu_enable[0] = hsi_inl(base +
-					       HSI_SYS_MPU_ENABLE_REG(port, 0));
-		p->sys_mpu_enable[1] = hsi_inl(base +
-					       HSI_SYS_MPU_U_ENABLE_REG(port,
-									0));
-		p->hst.frame_size = hsi_inl(base + HSI_HST_FRAMESIZE_REG(port));
-		p->hst.divisor = hsi_inl(base + HSI_HST_DIVISOR_REG(port));
-		p->hst.channels = hsi_inl(base + HSI_HST_CHANNELS_REG(port));
-		p->hst.arb_mode = hsi_inl(base + HSI_HST_ARBMODE_REG(port));
-		p->hsr.frame_size = hsi_inl(base + HSI_HSR_FRAMESIZE_REG(port));
-/*FIXME - check this register*/
-		p->hsr.timeout = hsi_inl(base + HSI_HSR_COUNTERS_REG(port));
-		p->hsr.channels = hsi_inl(base + HSI_HSR_CHANNELS_REG(port));
-	}
-}
-
-static void hsi_restore_ctx(struct platform_device *pdev)
-{
-	struct hsi_platform_data *pdata = pdev->dev.platform_data;
-	void __iomem *base = OMAP2_IO_ADDRESS(pdev->resource[0].start);
-	struct port_ctx *p;
-	int port;
-	int loss_count;
-
-	loss_count = omap_pm_get_dev_context_loss_count(&pdev->dev);
-
-	if (loss_count == pdata->ctx.loss_count)
-		return;
-
-	hsi_outl(pdata->ctx.sysconfig, base + HSI_SYS_SYSCONFIG_REG);
-	hsi_outl(pdata->ctx.gdd_gcr, base + HSI_GDD_GCR_REG);
-	for (port = 1; port <= pdata->num_ports; port++) {
-		p = &pdata->ctx.pctx[port - 1];
-		hsi_outl(p->sys_mpu_enable[0], base +
-			 HSI_SYS_MPU_ENABLE_REG(port, 0));
-		hsi_outl(p->sys_mpu_enable[1], base +
-			 HSI_SYS_MPU_U_ENABLE_REG(port, 0));
-		hsi_outl(p->hst.frame_size, base + HSI_HST_FRAMESIZE_REG(port));
-		hsi_outl(p->hst.divisor, base + HSI_HST_DIVISOR_REG(port));
-		hsi_outl(p->hst.channels, base + HSI_HST_CHANNELS_REG(port));
-		hsi_outl(p->hst.arb_mode, base + HSI_HST_ARBMODE_REG(port));
-		hsi_outl(p->hsr.frame_size, base + HSI_HSR_FRAMESIZE_REG(port));
-/* FIXME - check this register */
-		hsi_outl(p->hsr.timeout, base + HSI_HSR_COUNTERS_REG(port));
-		hsi_outl(p->hsr.channels, base + HSI_HSR_CHANNELS_REG(port));
-	}
-}
-#endif /* HSI_CONTEXT_SAVE_RESTORE */
 
 /*
  * NOTE: We abuse a little bit the struct port_ctx to use it also for
  * initialization.
  */
+
+
 static struct port_ctx hsi_port_ctx[] = {
 	[0] = {
 	       .hst.mode = HSI_MODE_FRAME,
 	       .hst.flow = HSI_FLOW_SYNCHRONIZED,
 	       .hst.frame_size = HSI_FRAMESIZE_DEFAULT,
-	       .hst.divisor = 1,
+	       .hst.divisor = HSI_DIVISOR_DEFAULT,
 	       .hst.channels = HSI_CHANNELS_DEFAULT,
 	       .hst.arb_mode = HSI_ARBMODE_ROUNDROBIN,
 	       .hsr.mode = HSI_MODE_FRAME,
 	       .hsr.flow = HSI_FLOW_SYNCHRONIZED,
 	       .hsr.frame_size = HSI_FRAMESIZE_DEFAULT,
 	       .hsr.channels = HSI_CHANNELS_DEFAULT,
-	       .hsr.divisor = 1,
-	       .hsr.timeout = HSI_COUNTERS_FT_DEFAULT |
-	       HSI_COUNTERS_TB_DEFAULT | HSI_COUNTERS_FB_DEFAULT,
+	       .hsr.divisor = HSI_DIVISOR_DEFAULT,
+	       .hsr.counters = HSI_COUNTERS_FT_DEFAULT |
+			       HSI_COUNTERS_TB_DEFAULT |
+			       HSI_COUNTERS_FB_DEFAULT,
 	       },
+};
+
+static struct ctrl_ctx hsi_ctx = {
+		.sysconfig = 0,
+		.gdd_gcr = 0,
+		.dll = 0,
+		.pctx = hsi_port_ctx,
 };
 
 static struct hsi_platform_data omap_hsi_platform_data = {
 	.num_ports = ARRAY_SIZE(hsi_port_ctx),
 	.hsi_gdd_chan_count = HSI_HSI_DMA_CHANNEL_MAX,
-	.ctx.pctx = hsi_port_ctx,
+	.default_hsi_fclk = HSI_DEFAULT_FCLK,
+	.ctx = &hsi_ctx,
 	.device_enable = omap_device_enable,
 	.device_idle = omap_device_idle,
 	.device_shutdown = omap_device_shutdown,
 };
+
+
+static struct platform_device *hsi_get_hsi_platform_device(void)
+{
+	struct device *dev;
+	struct platform_device *pdev;
+
+	/* HSI_TODO: handle platform device id (or port) (0/1) */
+	dev = bus_find_device_by_name(&platform_bus_type, NULL,
+					OMAP_HSI_PLATFORM_DEVICE_NAME);
+	if (!dev) {
+		pr_debug("Could not find platform device %s\n",
+		       OMAP_HSI_PLATFORM_DEVICE_NAME);
+		return 0;
+	}
+
+	if (!dev->driver) {
+		/* Could not find driver for platform device. */
+		return 0;
+	}
+
+	pdev = to_platform_device(dev);
+
+	return pdev;
+}
+
+static struct hsi_dev *hsi_get_hsi_controller_data(struct platform_device *pd)
+{
+	struct hsi_dev *hsi_ctrl;
+
+	if (!pd)
+		return 0;
+
+	hsi_ctrl = (struct hsi_dev *) platform_get_drvdata(pd);
+	if (!hsi_ctrl) {
+		pr_err("Could not find HSI controller data\n");
+		return 0;
+	}
+
+	return hsi_ctrl;
+}
+
+/* Note : for hsi_idle_hwmod() and hsi_enable_hwmod() :*/
+/* we should normally use omap_hwmod_enable(), but this */
+/* function contains a mutex lock of the OMAP HWMOD mutex and there */
+/* is only one HWMOD mutex shared for the whole HWMOD table. */
+/* This is not compatible with the way HSI driver has to enable the */
+/* clocks (from atomic context), as the mutex can very likely be */
+/* locked by another HWMOD user. Thus we bypass the mutex usage. */
+/* The global mutex has been replaced by a separate mutex per HWMOD */
+/* entry, then on 2.6.38 by a separate spinlock. */
+/**
+* hsi_idle_hwmod - This function is a used to workaround the omap_hwmod layer
+*			which might sleep when omap_hwmod_idle() is called,
+*			and thus cannot be called from atomic context.
+*
+* @od - reference to the hsi omap_device.
+*
+* Note : a "normal" .deactivate_func shall be omap_device_idle_hwmods()
+*/
+static int hsi_idle_hwmod(struct omap_device *od)
+{
+	/* HSI omap_device only contain one od->hwmods[0], so no need to */
+	/* loop for all hwmods */
+	_omap_hwmod_idle(od->hwmods[0]);
+	return 0;
+}
+
+/**
+* hsi_enable_hwmod - This function is a used to workaround the omap_hwmod layer
+*			which might sleep when omap_hwmod_enable() is called,
+*			and thus cannot be called from atomic context.
+*
+* @od - reference to the hsi omap_device.
+*
+* Note : a "normal" .activate_func shall be omap_device_enable_hwmods()
+*/
+static int hsi_enable_hwmod(struct omap_device *od)
+{
+	/* HSI omap_device only contain one od->hwmods[0], so no need to */
+	/* loop for all hwmods */
+	_omap_hwmod_enable(od->hwmods[0]);
+	return 0;
+}
+
+/**
+* omap_hsi_prepare_suspend - Prepare HSI for suspend mode (OFF)
+*
+* Return value : -ENODEV if HSI controller has not been found, else 0.
+*
+*/
+int omap_hsi_prepare_suspend(void)
+{
+	struct platform_device *pdev;
+	struct hsi_dev *hsi_ctrl;
+
+	pdev = hsi_get_hsi_platform_device();
+	hsi_ctrl = hsi_get_hsi_controller_data(pdev);
+
+	if (!hsi_ctrl)
+		return -ENODEV;
+
+	if (device_may_wakeup(&pdev->dev))
+		omap_mux_enable_wakeup(OMAP_HSI_PADCONF_CAWAKE_PIN);
+	else
+		omap_mux_disable_wakeup(OMAP_HSI_PADCONF_CAWAKE_PIN);
+
+	return 0;
+}
+
+/**
+* omap_hsi_prepare_idle - Prepare HSI for idle to low power
+*
+* Return value : -ENODEV if HSI controller has not been found, else 0.
+*
+*/
+int omap_hsi_prepare_idle(void)
+{
+	struct platform_device *pdev;
+	struct hsi_dev *hsi_ctrl;
+
+	pdev = hsi_get_hsi_platform_device();
+	hsi_ctrl = hsi_get_hsi_controller_data(pdev);
+
+	if (!hsi_ctrl)
+		return -ENODEV;
+
+	/* If hsi_clocks_disable_channel() is used, it prevents board to */
+	/* enter sleep, due to the checks of HSI controller status. */
+	/* This is why we call directly the omap_device_xxx() function here */
+	hsi_runtime_suspend(hsi_ctrl->dev);
+	omap_device_idle(pdev);
+
+	return 0;
+}
+
+
+/**
+* omap_hsi_resume_idle - Prepare HSI for wakeup from low power
+*
+* Return value :* -ENODEV if HSI platform device or HSI controller or CAWAKE
+*		  Padconf has not been found
+*		* -EPERM if HSI is not allowed to wakeup the platform.
+*		* else 0.
+*
+*/
+int omap_hsi_resume_idle(void)
+{
+	struct platform_device *pdev;
+	struct hsi_dev *hsi_ctrl;
+	u16 val;
+
+	pdev = hsi_get_hsi_platform_device();
+	if (!pdev)
+		return -ENODEV;
+	if (!device_may_wakeup(&pdev->dev))
+		return -EPERM;
+
+	hsi_ctrl = hsi_get_hsi_controller_data(pdev);
+	if (!hsi_ctrl)
+		return -ENODEV;
+
+	/* Check for IO pad wakeup */
+	val = omap_mux_read_signal(OMAP_HSI_PADCONF_CAWAKE_PIN);
+
+	if (val == -ENODEV)
+		return val;
+
+	if (val & OMAP44XX_PADCONF_WAKEUPEVENT0) {
+		dev_info(hsi_ctrl->dev, "Modem wakeup detected from HSI "
+					"PADCONF : 0x%04x\n", val);
+
+		/* CAWAKE falling or rising edge detected */
+		hsi_ctrl->hsi_port->cawake_off_event = true;
+		tasklet_hi_schedule(&hsi_ctrl->hsi_port->hsi_tasklet);
+
+		/* Disable interrupt until Bottom Half has cleared */
+		/* the IRQ status register */
+		disable_irq_nosync(hsi_ctrl->hsi_port->irq);
+	}
+
+	return 0;
+}
 
 /* HSI_TODO : This requires some fine tuning & completion of
  * activate/deactivate latency values
  */
 static struct omap_device_pm_latency omap_hsi_latency[] = {
 	[0] = {
-	       .deactivate_func = omap_device_idle_hwmods,
-	       .activate_func = omap_device_enable_hwmods,
+	       .deactivate_func = hsi_idle_hwmod,
+	       .activate_func = hsi_enable_hwmod,
 	       .flags = OMAP_DEVICE_LATENCY_AUTO_ADJUST,
 	       },
 };
@@ -201,10 +293,10 @@ static int __init omap_hsi_init(struct omap_hwmod *oh, void *user)
 	od = omap_device_build(OMAP_HSI_PLATFORM_DEVICE_DRIVER_NAME, 0, oh,
 			       pdata, sizeof(*pdata), omap_hsi_latency,
 			       ARRAY_SIZE(omap_hsi_latency), false);
-	WARN(IS_ERR(od), "Cant build omap_device for %s:%s.\n",
+	WARN(IS_ERR(od), "Can't build omap_device for %s:%s.\n",
 	     OMAP_HSI_PLATFORM_DEVICE_DRIVER_NAME, oh->name);
 
-	pr_info("HSI: device registered\n");
+	pr_info("HSI: device registered as omap_hwmod: %s\n", oh->name);
 	return 0;
 }
 

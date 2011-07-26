@@ -61,6 +61,7 @@ enum {
 	HSI_IOCTL_SET_TX,	/* Set HST configuration */
 	HSI_IOCTL_GET_TX,	/* Get HST configuration */
 	HSI_IOCTL_SW_RESET,	/* Force a HSI SW RESET */
+	HSI_IOCTL_GET_FIFO_OCCUPANCY, /* Get amount of words in RX FIFO */
 };
 
 /* Forward references */
@@ -82,7 +83,7 @@ struct hsr_ctx {
 	u32 flow;
 	u32 frame_size;
 	u32 divisor;
-	u32 timeout;
+	u32 counters;
 	u32 channels;
 };
 
@@ -94,15 +95,15 @@ struct port_ctx {
 
 /**
  * struct ctrl_ctx - hsi controller regs context
- * @loss_count: hsi last loss count
- * @sysconfig: keeps sysconfig reg state
- * @gdd_gcr: keeps gcr reg state
+ * @sysconfig: keeps HSI_SYSCONFIG reg state
+ * @gdd_gcr: keeps DMA_GCR reg state
+ * @dll: keeps HSR_DLL state
  * @pctx: array of port context
  */
 struct ctrl_ctx {
-	int loss_count;
 	u32 sysconfig;
 	u32 gdd_gcr;
+	u32 dll;
 	struct port_ctx *pctx;
 };
 /* END DPS */
@@ -118,8 +119,9 @@ struct hsi_platform_data {
 	int (*device_shutdown) (struct platform_device *pdev);
 	int (*device_idle) (struct platform_device *pdev);
 	u8 num_ports;
-	struct ctrl_ctx ctx;
+	struct ctrl_ctx *ctx;
 	u8 hsi_gdd_chan_count;
+	unsigned long default_hsi_fclk;
 };
 
 /**
@@ -167,11 +169,12 @@ struct hsi_device_driver {
 int hsi_register_driver(struct hsi_device_driver *driver);
 void hsi_unregister_driver(struct hsi_device_driver *driver);
 int hsi_open(struct hsi_device *dev);
-int hsi_write(struct hsi_device *dev, u32 * addr, unsigned int size);
+int hsi_write(struct hsi_device *dev, u32 *addr, unsigned int size);
 void hsi_write_cancel(struct hsi_device *dev);
-int hsi_read(struct hsi_device *dev, u32 * addr, unsigned int size);
+int hsi_read(struct hsi_device *dev, u32 *addr, unsigned int size);
 void hsi_read_cancel(struct hsi_device *dev);
 int hsi_poll(struct hsi_device *dev);
+int hsi_unpoll(struct hsi_device *dev);
 int hsi_ioctl(struct hsi_device *dev, unsigned int command, void *arg);
 void hsi_close(struct hsi_device *dev);
 void hsi_set_read_cb(struct hsi_device *dev,

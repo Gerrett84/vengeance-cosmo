@@ -652,8 +652,10 @@ static struct omap_hwmod_ocp_if *omap44xx_aess_masters[] = {
 
 static struct omap_hwmod_addr_space omap44xx_aess_addrs[] = {
 	{
-		.pa_start	= 0x49000000,
-		.pa_end		= 0x491f11ff,
+		
+		.pa_start	= 0x40100000,
+		.pa_end		= 0x401f13ff,
+		
 		.flags		= ADDR_TYPE_RT
 	},
 };
@@ -2212,7 +2214,11 @@ static struct omap_hwmod_class_sysconfig omap44xx_hsi_sysc = {
 			   SYSC_HAS_SIDLEMODE | SYSC_HAS_MIDLEMODE |
 			   SYSC_HAS_SOFTRESET),
 	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
-			   MSTANDBY_FORCE | MSTANDBY_NO | MSTANDBY_SMART),
+	
+			   SIDLE_SMART_WKUP |
+			   MSTANDBY_FORCE | MSTANDBY_NO | MSTANDBY_SMART |
+			   MSTANDBY_SMART_WKUP),
+	
 	.sysc_fields	= &omap_hwmod_sysc_type1,
 };
 
@@ -2223,9 +2229,9 @@ static struct omap_hwmod_class omap44xx_hsi_hwmod_class = {
 
 /* hsi */
 static struct omap_hwmod_irq_info omap44xx_hsi_irqs[] = {
-	{ .name = "mpu_p1", .irq = 67 + OMAP44XX_IRQ_GIC_START },
-	{ .name = "mpu_p2", .irq = 68 + OMAP44XX_IRQ_GIC_START },
-	{ .name = "mpu_dma", .irq = 71 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "hsi_p1_mpu", .irq = 67 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "hsi_p2_mpu", .irq = 68 + OMAP44XX_IRQ_GIC_START },
+	{ .name = "hsi_dma_mpu", .irq = 71 + OMAP44XX_IRQ_GIC_START },
 };
 
 /* hsi master ports */
@@ -2262,6 +2268,7 @@ static struct omap_hwmod omap44xx_hsi_hwmod = {
 	.mpu_irqs	= omap44xx_hsi_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_hsi_irqs),
 	.main_clk	= "hsi_fck",
+	.vdd_name	= "core",
 	.prcm = {
 		.omap4 = {
 			.clkctrl_reg = OMAP4430_CM_L3INIT_HSI_CLKCTRL,
@@ -2590,6 +2597,7 @@ static struct omap_hwmod omap44xx_ipu_c1_hwmod = {
 static struct omap_hwmod omap44xx_ipu_hwmod = {
 	.name		= "ipu",
 	.class		= &omap44xx_ipu_hwmod_class,
+	.flags          = HWMOD_INIT_NO_RESET,
 	.mpu_irqs	= omap44xx_ipu_irqs,
 	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_ipu_irqs),
 	.rst_lines	= omap44xx_ipu_resets,
@@ -3242,7 +3250,10 @@ static struct omap_hwmod_class_sysconfig omap44xx_mcpdm_sysc = {
 	.sysc_offs	= 0x0010,
 	.sysc_flags	= (SYSC_HAS_EMUFREE | SYSC_HAS_RESET_STATUS |
 			   SYSC_HAS_SIDLEMODE | SYSC_HAS_SOFTRESET),
-	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART),
+	
+	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART |
+			   SIDLE_SMART_WKUP),
+	
 	.sysc_fields	= &omap_hwmod_sysc_type2,
 };
 

@@ -1,7 +1,7 @@
 /*
  *  Shared Transport Header file
- *	To be included by the protocol stack drivers for
- *	Texas Instruments BT,FM and GPS combo chip drivers
+ *  	To be included by the protocol stack drivers for
+ *  	Texas Instruments BT,FM and GPS combo chip drivers
  *
  *  Copyright (C) 2009 Texas Instruments
  *
@@ -24,60 +24,94 @@
 #define ST_H
 
 #include <linux/skbuff.h>
-
-/* TODO:
- * Move the following to tty.h upon acceptance
+/*
+ * st.h
  */
-#define N_TI_WL	22	/* Ldisc for TI's WL BT, FM, GPS combo chips */
+#define N_TI_WL	23	/* Ldisc for TI's WL BT, FM, GPS combo chips */
 
-/**
- * enum kim_gpio_state - Few protocols such as FM have ACTIVE LOW
- *	gpio states for their chip/core enable gpios
+/* some gpios have active high, others like fm have
+ * active low
  */
 enum kim_gpio_state {
 	KIM_GPIO_INACTIVE,
 	KIM_GPIO_ACTIVE,
 };
 
-/**
- * enum proto-type - The protocol on WiLink chips which share a
- *	common physical interface like UART.
- */
-enum proto_type {
-	ST_BT,
-	ST_FM,
-	ST_GPS,
-	ST_MAX,
+enum {
+	ST_ERR_FAILURE = -1,	/* check struct */
+	ST_SUCCESS,
+	ST_ERR_PENDING = -5,	/* to call reg_complete_cb */
+	ST_ERR_ALREADY,		/* already registered */
+	ST_ERR_INPROGRESS,
+	ST_ERR_NOPROTO,		/* protocol not supported */
 };
 
-/**
- * struct st_proto_s - Per Protocol structure from BT/FM/GPS to ST
- * @type: type of the protocol being registered among the
- *	available proto_type(BT, FM, GPS the protocol which share TTY).
- * @recv: the receiver callback pointing to a function in the
- *	protocol drivers called by the ST driver upon receiving
- *	relevant data.
- * @match_packet: reserved for future use, to make ST more generic
- * @reg_complete_cb: callback handler pointing to a function in protocol
- *	handler called by ST when the pending registrations are complete.
- *	The registrations are marked pending, in situations when fw
- *	download is in progress.
- * @write: pointer to function in ST provided to protocol drivers from ST,
- *	to be made use when protocol drivers have data to send to TTY.
- * @priv_data: privdate data holder for the protocol drivers, sent
- *	from the protocol drivers during registration, and sent back on
- *	reg_complete_cb and recv.
+
+
+/*
+ * definition of hci channel index
+ */
+typedef unsigned char channel_t;
+
+#define ST_MAX_CHANNELS  16 /* maximum ST channels (==clients) */	
+
+
+/*
+ * the list of gpios on chip
+ */
+enum gpio_t {
+	ST_GPIO_BT,
+	ST_GPIO_FM,
+	ST_GPIO_GPS,
+	ST_GPIO_MAX
+};
+
+
+
+/* per protocol structure
+ * for BT/FM and GPS
  */
 struct st_proto_s {
-	enum proto_type type;
-	long (*recv) (void *, struct sk_buff *);
+/*
+ * index of HCI channel to be regietered (enable reception of packets on this channel)
+ */
+	channel_t channelid;	
+/*
+ * to be called by ST when data arrives
+ */
+	long (*recv) (struct sk_buff *);
+/*
+ * for future use, logic now to be in ST
+ */
 	unsigned char (*match_packet) (const unsigned char *data);
-	void (*reg_complete_cb) (void *, char data);
-	long (*write) (struct sk_buff *skb);
-	void *priv_data;
+/*
+ * subsequent registration return PENDING,
+ * signalled complete by this callback function
+ */
+	void (*reg_complete_cb) (char data);
+
+/*
+ * channel specific parameters
+ */
+	unsigned short max_frame_size;	/* maximum HCI packet length (header + payload) */
+	unsigned short header_size;		/* size (in bytes) of packet header */
+	unsigned char  length_offset;	/* offset (in bytes) of length field within packet header */
+	unsigned char  length_size;		/* size of length field (in bytes) within packet header */  
+	enum gpio_t		gpio_id;		/* index (corresponds to "platform_xxx" definition) of Shutdown gpio assigned to the channel 
+									 * ST_GPIO_MAX means there is no specific GPIO for this channel */
 };
 
-extern long st_register(struct st_proto_s *);
-extern long st_unregister(enum proto_type);
+extern long st_register(struct st_proto_s *new_proto);
+extern long st_unregister(channel_t channelid);
+extern long st_write(struct sk_buff *skb);
+
+#if 0
+//#define SHOW_ST_LOG
+#define ST_LOG(fmt, arg...)  printk(KERN_ERR "(st):"fmt"\n" , ## arg)
+#define ST_LOG_X(fmt, arg...)
+#else
+#define ST_LOG(fmt, arg...)
+#define ST_LOG_X(fmt, arg...)
+#endif
 
 #endif /* ST_H */

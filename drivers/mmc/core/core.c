@@ -41,6 +41,7 @@
 static struct workqueue_struct *workqueue;
 static struct wake_lock mmc_delayed_work_wake_lock;
 
+
 /*
  * Enabling software CRCs on the data blocks can be a significant (30%)
  * performance cost, and for other reasons may not always be desired.
@@ -64,6 +65,10 @@ module_param_named(removable, mmc_assume_removable, bool, 0644);
 MODULE_PARM_DESC(
 	removable,
 	"MMC/SD cards are removable and may be removed during suspend");
+
+#ifdef CONFIG_MACH_LGE_MMC_ALWAYSON
+struct mmc_ios ios_backup;
+#endif
 
 /*
  * Internal function. Schedule delayed work in the MMC work queue.
@@ -209,7 +214,17 @@ static void mmc_wait_done(struct mmc_request *mrq)
  *	for the command to complete. Does not attempt to parse the
  *	response.
  */
-void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
+
+
+
+/*
+**	return value changed 
+**	void -> int
+**	
+**	old prototype ---> void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
+*/ 
+int mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
+
 {
 	DECLARE_COMPLETION_ONSTACK(complete);
 
@@ -218,7 +233,31 @@ void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 
 	mmc_start_request(host, mrq);
 
+
+
+	
+
+#ifdef CONFIG_MACH_LGE_MMC_REFRESH
+	if(wait_for_completion_timeout(&complete,   HZ * 3)==0)
+	{
+		return 0xbcbc;
+	}
+	else
+	{
+		return 0;
+	}
+	
+#else
+
 	wait_for_completion(&complete);
+
+#endif
+
+
+
+
+
+	
 }
 
 EXPORT_SYMBOL(mmc_wait_for_req);
@@ -579,9 +618,8 @@ int mmc_host_lazy_disable(struct mmc_host *host)
 		return 0;
 
 	if (host->disable_delay) {
-		mmc_schedule_delayed_work(&host->disable,
+		return queue_delayed_work(workqueue, &host->disable, 
 				msecs_to_jiffies(host->disable_delay));
-		return 0;
 	} else
 		return mmc_host_do_disable(host, 1);
 }
@@ -846,6 +884,9 @@ EXPORT_SYMBOL(mmc_regulator_set_ocr);
 
 #endif
 
+
+
+
 /*
  * Mask off any voltages we don't support and select
  * the lowest voltage
@@ -869,6 +910,11 @@ u32 mmc_select_voltage(struct mmc_host *host, u32 ocr)
 				mmc_hostname(host));
 		ocr = 0;
 	}
+
+
+
+	
+	mmc_delay(30);
 
 	return ocr;
 }
@@ -920,7 +966,9 @@ static void mmc_power_up(struct mmc_host *host)
 	 * This delay should be sufficient to allow the power supply
 	 * to reach the minimum voltage.
 	 */
-	mmc_delay(10);
+
+	
+	mmc_delay(30);
 
 	host->ios.clock = host->f_min;
 
@@ -931,7 +979,7 @@ static void mmc_power_up(struct mmc_host *host)
 	 * This delay must be at least 74 clock sizes, or 1 ms, or the
 	 * time required to reach a stable voltage.
 	 */
-	mmc_delay(10);
+	mmc_delay(30);
 }
 
 static void mmc_power_off(struct mmc_host *host)
@@ -1183,8 +1231,35 @@ void mmc_rescan(struct work_struct *work)
 	 */
 	err = mmc_send_app_op_cond(host, 0, &ocr);
 	if (!err) {
+	#ifdef CONFIG_MACH_LGE_MMC_REFRESH
+		if (mmc_attach_sd(host, ocr))
+		{
+		
+			extern int omap_hsmmc_regulator_force_refresh(struct mmc_host *mmc);
+						
+		
+			omap_hsmmc_regulator_force_refresh(host);
+			printk(KERN_WARNING "%s: omap_hsmmc_regulator_force_refresh() done \n",mmc_hostname(host), err);
+			
+			mmc_claim_host(host);
+
+			mmc_power_up(host);
+			sdio_reset(host);
+			mmc_go_idle(host);
+			mmc_send_if_cond(host, host->ocr_avail);
+			mmc_send_app_op_cond(host, 0, &ocr);
+			if(mmc_attach_sd(host, ocr))
+			{
+				mmc_power_off(host);
+				printk("[microSD]f=%s, line=%d, retry initialize FAIL  \n", __func__, __LINE__);	
+			}
+			else
+				printk("[microSD]f=%s, line=%d, retry initialize SUCCESS  \n", __func__, __LINE__);	
+		}
+	#else
 		if (mmc_attach_sd(host, ocr))
 			mmc_power_off(host);
+	#endif	//CONFIG_MACH_LGE_MMC_REFRESH
 		extend_wakelock = 1;
 		goto out;
 	}
@@ -1329,11 +1404,44 @@ int mmc_card_can_sleep(struct mmc_host *host)
 EXPORT_SYMBOL(mmc_card_can_sleep);
 
 #ifdef CONFIG_PM
-
 /**
  *	mmc_suspend_host - suspend a host
  *	@host: mmc host
  */
+#ifdef CONFIG_MACH_LGE_MMC_ALWAYSON
+int mmc_suspend_host(struct mmc_host *host)
+{
+	int err = 0;
+
+	if (mmc_bus_needs_resume(host))
+		return 0;
+
+	if (host->caps & MMC_CAP_DISABLE)
+		cancel_delayed_work(&host->disable);
+	cancel_delayed_work(&host->detect);
+	mmc_flush_scheduled_work();
+
+	mmc_bus_get(host);
+	if (host->bus_ops && !host->bus_dead) {
+		if (host->bus_ops->suspend)
+			err = host->bus_ops->suspend(host);
+	}
+	mmc_bus_put(host);
+
+	if(!strncmp(mmc_hostname(host),"mmc1",4))
+	{
+		memcpy(&ios_backup,&host->ios,sizeof(struct mmc_ios));
+		printk("\n(IOS backup)\n%s: clock %uHz busmode %u powermode %u cs %u Vdd %u width %u timing %u\n",mmc_hostname(host), ios_backup.clock, ios_backup.bus_mode,ios_backup.power_mode, ios_backup.chip_select, ios_backup.vdd,ios_backup.bus_width, ios_backup.timing);
+	}
+	
+	{
+		if (!err && !(host->pm_flags & MMC_PM_KEEP_POWER))
+			mmc_power_off(host);
+	}
+
+	return err;
+}
+#else
 int mmc_suspend_host(struct mmc_host *host)
 {
 	int err = 0;
@@ -1358,13 +1466,55 @@ int mmc_suspend_host(struct mmc_host *host)
 
 	return err;
 }
-
+#endif
 EXPORT_SYMBOL(mmc_suspend_host);
 
 /**
  *	mmc_resume_host - resume a previously suspended host
  *	@host: mmc host
  */
+#ifdef CONFIG_MACH_LGE_MMC_ALWAYSON
+int mmc_resume_host(struct mmc_host *host)
+{
+	int err = 0;
+
+	mmc_bus_get(host);
+	if (mmc_bus_manual_resume(host)) {
+		host->bus_resume_flags |= MMC_BUSRESUME_NEEDS_RESUME;
+		mmc_bus_put(host);
+		return 0;
+	}
+
+	if (host->bus_ops && !host->bus_dead) {
+		if (!(host->pm_flags & MMC_PM_KEEP_POWER)) 
+		{
+			mmc_power_up(host);
+			mmc_select_voltage(host, host->ocr);
+		}
+		
+		BUG_ON(!host->bus_ops->resume);
+		err = host->bus_ops->resume(host);
+		
+		if (err) {
+			printk(KERN_WARNING "%s: error %d during resume "
+					    "(card was removed?)\n",
+					    mmc_hostname(host), err);
+			err = 0;
+		}
+	}
+
+	if(!strncmp(mmc_hostname(host),"mmc1",4))
+	{
+		memcpy(&host->ios,&ios_backup,sizeof(struct mmc_ios));
+		mmc_set_ios(host);
+		printk("\n(IOS restore)\n%s: clock %uHz busmode %u powermode %u cs %u Vdd %u  width %u timing %u\n",mmc_hostname(host), ios_backup.clock, ios_backup.bus_mode,ios_backup.power_mode, ios_backup.chip_select, ios_backup.vdd,ios_backup.bus_width, ios_backup.timing);
+	}
+	
+	mmc_bus_put(host);
+
+	return err;
+}
+#else
 int mmc_resume_host(struct mmc_host *host)
 {
 	int err = 0;
@@ -1383,6 +1533,15 @@ int mmc_resume_host(struct mmc_host *host)
 		}
 		BUG_ON(!host->bus_ops->resume);
 		err = host->bus_ops->resume(host);
+	#ifdef CONFIG_MACH_LGE_MMC_REFRESH
+		if(err == 0xbcbc)
+		{
+			printk(KERN_WARNING "%s: error %x during resume "
+					    "(retry will be done)\n",
+					    mmc_hostname(host), err);
+
+		}else
+	#endif
 		if (err) {
 			printk(KERN_WARNING "%s: error %d during resume "
 					    "(card was removed?)\n",
@@ -1394,6 +1553,7 @@ int mmc_resume_host(struct mmc_host *host)
 
 	return err;
 }
+#endif
 EXPORT_SYMBOL(mmc_resume_host);
 
 /* Do the card removal on suspend if card is assumed removeable

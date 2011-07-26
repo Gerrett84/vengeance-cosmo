@@ -326,6 +326,7 @@ PVRSRV_ERROR SGXPostPowerState (IMG_HANDLE				hDevHandle,
 								PVRSRV_DEV_POWER_STATE	eNewPowerState,
 								PVRSRV_DEV_POWER_STATE	eCurrentPowerState)
 {
+
 	if ((eNewPowerState != eCurrentPowerState) &&
 		(eCurrentPowerState != PVRSRV_DEV_POWER_STATE_ON))
 	{

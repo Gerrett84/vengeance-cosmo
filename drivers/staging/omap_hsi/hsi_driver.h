@@ -34,6 +34,7 @@
 #include <linux/notifier.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/pm_runtime.h>
 
 #include <mach/omap_hsi.h>
 #include <linux/hsi_driver_if.h>
@@ -43,6 +44,7 @@
 #define HSI_CH_RX_POLL	0x10
 #define HSI_CH_ACWAKE		0x02	/* ACWAKE line status */
 
+#define HSI_CH_NUMBER_NONE	0xFF
 /*
  * The number of channels handled by the driver in the ports, or the highest
  * port channel number (+1) used. (MAX:8 for SSI; 16 for HSI)
@@ -56,13 +58,13 @@
 
 #define LOG_NAME		"OMAP HSI: "
 
-/* SW strategies for FIFO mapping */
+/* SW strategies for HSI FIFO mapping */
 enum {
 	HSI_FIFO_MAPPING_UNDEF = 0,
 	HSI_FIFO_MAPPING_SSI,	/* 8 FIFOs per port (SSI compatible mode) */
 	HSI_FIFO_MAPPING_ALL_PORT1,	/* ALL FIFOs mapped on 1st port */
 };
-#define HSI_FIFO_MAPPING_DEFAULT	HSI_FIFO_MAPPING_SSI
+#define HSI_FIFO_MAPPING_DEFAULT	HSI_FIFO_MAPPING_ALL_PORT1
 
 /* Device identifying constants */
 enum {
@@ -119,27 +121,38 @@ struct hsi_channel {
  * @irq: IRQ number
  * @cawake_gpio: GPIO number for cawake line (-1 if none)
  * @cawake_gpio_irq: IRQ number for cawake gpio events
+ * @cawake_status: Tracks CAWAKE line status
+ * @cawake_off_event: True if CAWAKE event was detected from OFF mode
+ * @acwake_status: Bitmap to track ACWAKE line status per channel
+ * @in_int_tasklet: True if interrupt tasklet for this port is currently running
+ * @in_cawake_tasklet: True if CAWAKE tasklet for this port is currently running
  * @counters_on: indicates if the HSR counters are in use or not
  * @reg_counters: stores the previous counters values when deactivated
  * @lock: Serialize access to the port registers and internal data
- * @hsi_tasklet: Bottom half for interrupts
+ * @hsi_tasklet: Bottom half for interrupts when clocks are enabled
  * @cawake_tasklet: Bottom half for cawake events
  */
 struct hsi_port {
 	struct hsi_channel hsi_channel[HSI_PORT_MAX_CH];
 	struct hsi_dev *hsi_controller;
 	u8 flags;
-	u8 port_number;
+	u8 port_number;		/* Range [1,2] */
 	u8 max_ch;
 	u8 n_irq;
 	int irq;
 	int cawake_gpio;
 	int cawake_gpio_irq;
+	int cawake_status;
+	bool cawake_off_event;
+	unsigned int acwake_status;	/* HSI_TODO : fine tune init values */
+	bool in_int_tasklet;
+	bool in_cawake_tasklet;
 	int counters_on;
 	unsigned long reg_counters;
 	spinlock_t lock; /* access to the port registers and internal data */
 	struct tasklet_struct hsi_tasklet;
-	struct tasklet_struct cawake_tasklet;
+	struct tasklet_struct cawake_tasklet;	/* SSI_TODO : need to replace */
+						/* by a workqueue */
 };
 
 /**
@@ -153,18 +166,18 @@ struct hsi_port {
  * @base: HSI registers base virtual address
  * @phy_base: HSI registers base physical address
  * @lock: Serializes access to internal data and regs
- * @cawake_status: Tracks CAWAKE line status
- * @acwake_status: Bitmap to track ACWAKE line status per channel
+ * @clock_enabled: Indicates if HSI Clocks are ON
  * @gdd_irq: GDD (DMA) irq number
  * @fifo_mapping_strategy: Selected strategy for fifo to ports/channels mapping
  * @gdd_usecount: Holds the number of ongoning DMA transfers
  * @last_gdd_lch: Last used GDD logical channel
- * @gdd_chan-count: Number of available DMA channels on the device (must be ^2)
+ * @gdd_chan_count: Number of available DMA channels on the device (must be ^2)
+ * @in_dma_tasklet: True if DMA tasklet for the controller is currently running
  * @set_min_bus_tput: (PM) callback to set minimun bus throuput
  * @clk_notifier_register: (PM) callabck for DVFS support
  * @clk_notifier_unregister: (PM) callabck for DVFS support
  * @hsi_nb: (PM) Notification block for DVFS notification chain
- * @hsi_gdd_tasklet: Bottom half for DMA transfers
+ * @hsi_gdd_tasklet: Bottom half for DMA Interrupts when clocks are enabled
  * @dir: debugfs base directory
  * @dev: Reference to the HSI platform device
  */
@@ -175,13 +188,13 @@ struct hsi_dev { /* HSI_TODO:  should be later renamed into hsi_controller*/
 	void __iomem *base;
 	unsigned long phy_base;
 	spinlock_t lock; /* Serializes access to internal data and regs */
-	bool cawake_status;	/* HSI_TODO : fine tune the init values */
-	unsigned int acwake_status;	/* HSI_TODO : fine tune  init values */
+	bool clock_enabled;
 	int gdd_irq;
 	unsigned int fifo_mapping_strategy;
 	unsigned int gdd_usecount;
 	unsigned int last_gdd_lch;
 	unsigned int gdd_chan_count;
+	bool in_dma_tasklet;
 	void (*set_min_bus_tput) (struct device *dev, u8 agent_id,
 				  unsigned long r);
 	struct notifier_block hsi_nb;
@@ -203,7 +216,12 @@ void hsi_bus_exit(void);
 void hsi_reset_ch_read(struct hsi_channel *ch);
 void hsi_reset_ch_write(struct hsi_channel *ch);
 bool hsi_is_channel_busy(struct hsi_channel *ch);
+bool hsi_is_hsi_port_busy(struct hsi_port *pport);
+bool hsi_is_hsi_controller_busy(struct hsi_dev *hsi_ctrl);
+bool hsi_is_hst_port_busy(struct hsi_port *pport);
+bool hsi_is_hst_controller_busy(struct hsi_dev *hsi_ctrl);
 
+int hsi_driver_enable_interrupt(struct hsi_port *pport, u32 flag);
 int hsi_driver_enable_read_interrupt(struct hsi_channel *hsi_channel,
 					u32 *data);
 int hsi_driver_enable_write_interrupt(struct hsi_channel *hsi_channel,
@@ -244,16 +262,25 @@ long hsi_hst_buffer_reg(struct hsi_dev *hsi_ctrl,
 			unsigned int port, unsigned int channel);
 long hsi_hsr_buffer_reg(struct hsi_dev *hsi_ctrl,
 			unsigned int port, unsigned int channel);
+u8 hsi_get_rx_fifo_occupancy(struct hsi_dev *hsi_ctrl, u8 fifo);
 
 int hsi_softreset(struct hsi_dev *hsi_ctrl);
 void hsi_softreset_driver(struct hsi_dev *hsi_ctrl);
 
-void hsi_clocks_disable(struct device *dev, const char *s);
-int hsi_clocks_enable(struct device *dev, const char *s);
 void hsi_clocks_disable_channel(struct device *dev, u8 channel_number,
 				const char *s);
 int hsi_clocks_enable_channel(struct device *dev, u8 channel_number,
 				const char *s);
+#ifdef CONFIG_PM_RUNTIME
+extern int hsi_runtime_resume(struct device *dev);
+extern int hsi_runtime_suspend(struct device *dev);
+#else
+static inline int hsi_runtime_resume(struct device *dev) { return -ENOSYS; }
+static inline int hsi_runtime_suspend(struct device *dev) { return -ENOSYS; }
+#endif
+void hsi_save_ctx(struct hsi_dev *hsi_ctrl);
+void hsi_restore_ctx(struct hsi_dev *hsi_ctrl);
+
 
 #ifdef CONFIG_DEBUG_FS
 int hsi_debug_init(void);
@@ -266,6 +293,12 @@ void hsi_debug_remove_ctrl(struct hsi_dev *hsi_ctrl);
 #define	hsi_debug_init()		0
 #define	hsi_debug_exit()
 #endif /* CONFIG_DEBUG_FS */
+
+
+#if defined(CONFIG_OMAP_IFX_HSI_DLP)
+int IFX_CP_CRASH_DUMP_INIT(void *dev);
+#endif
+
 
 static inline struct hsi_channel *hsi_ctrl_get_ch(struct hsi_dev *hsi_ctrl,
 					      unsigned int port,
@@ -319,14 +352,30 @@ static inline void hsi_outw_and(u16 data, void __iomem *base, u32 offset)
 	hsi_outw((tmp & data), base, offset);
 }
 
-static inline u32 hsi_get_cawake(struct hsi_port *port)
+static inline int hsi_get_cawake(struct hsi_port *port)
 {
-	if (port->cawake_gpio >= 0)
+	struct platform_device *pdev =
+				to_platform_device(port->hsi_controller->dev);
+
+	if (hsi_driver_device_is_hsi(pdev))
+		return (HSI_HSR_MODE_WAKE_STATUS ==
+			(hsi_inl(port->hsi_controller->base,
+				HSI_HSR_MODE_REG(port->port_number)) &
+				HSI_HSR_MODE_WAKE_STATUS));
+	else if (port->cawake_gpio >= 0)
 		return gpio_get_value(port->cawake_gpio);
 	else
-		return hsi_inl(port->hsi_controller->base,
-				HSI_HSR_MODE_REG(port->port_number)) &
-				HSI_HSR_MODE_WAKE_STATUS;
+		return -ENXIO;
+}
+
+static inline void hsi_clocks_disable(struct device *dev, const char *s)
+{
+	hsi_clocks_disable_channel(dev, HSI_CH_NUMBER_NONE, s);
+}
+
+static inline int hsi_clocks_enable(struct device *dev, const char *s)
+{
+	return hsi_clocks_enable_channel(dev, HSI_CH_NUMBER_NONE, s);
 }
 
 #endif /* __HSI_DRIVER_H__ */

@@ -54,6 +54,7 @@
  * disabled via sysfs. This also causes that any deeper omap sleep states are
  * blocked. 
  */
+#define DEFAULT_TIMEOUT 5
 
 #define MAX_UART_HWMOD_NAME_LEN		16
 
@@ -65,15 +66,12 @@ struct omap_uart_state {
 
 	void __iomem *wk_st;
 	void __iomem *wk_en;
-	u32 padconf_wake_ev;
 	u32 wk_mask;
 	u32 padconf;
 	u32 dma_enabled;
-
 	u32 rts_padconf;
 	int rts_override;
 	u16 rts_padvalue;
-
 	struct clk *ick;
 	struct clk *fck;
 	int clocked;
@@ -99,10 +97,10 @@ struct omap_uart_state {
 	u16 scr;
 	u16 wer;
 	u16 mcr;
+#ifdef DMA_FOR_UART2
 	u16 mdr3;
 	u16 dma_thresh;
-
-
+#endif
 #endif
 };
 
@@ -206,21 +204,6 @@ static inline void omap_uart_enable_rtspullup(struct omap_uart_state *uart)
 	uart->rts_override = 1;
 }
 
-static void omap_uart_rtspad_init(struct omap_uart_state *uart)
-{
-	if (!cpu_is_omap44xx())
-		return;
-	switch (uart->num) {
-	case UART2:
-		uart->rts_override = 0;
-		uart->rts_padconf = 0x4A100118;
-		break;
-	default:
-		uart->rts_padconf = 0;
-		break;
-	}
-}
-
 #if defined(CONFIG_PM)
 
 static void omap_uart_save_context(struct omap_uart_state *uart)
@@ -245,6 +228,7 @@ static void omap_uart_save_context(struct omap_uart_state *uart)
 	uart->mcr = serial_read_reg(uart, UART_MCR);
 	serial_write_reg(uart, UART_LCR, lcr);
 
+#ifdef DMA_FOR_UART2
 	/* HACK to reset UART module if DMA is enabled
 	 * For some reason if DMA is enabled the module is
 	 * stuck in transition state.
@@ -254,6 +238,7 @@ static void omap_uart_save_context(struct omap_uart_state *uart)
 		uart->dma_thresh = serial_read_reg(uart, UART_TX_DMA_THRESHOLD);
 		serial_write_reg(uart, UART_OMAP_SYSC, 0x2);
 	}
+#endif
 	uart->context_valid = 1;
 }
 
@@ -269,7 +254,11 @@ static void omap_uart_restore_context(struct omap_uart_state *uart)
 
 	uart->context_valid = 0;
 
-	serial_write_reg(uart, UART_OMAP_MDR1, 0x7);
+	if (uart->dma_enabled)
+		omap_uart_mdr1_errataset(uart->num, 0x07, 0x59);
+	else
+		omap_uart_mdr1_errataset(uart->num, 0x07, 0x51);
+
 	/* Config B mode */
 	serial_write_reg(uart, UART_LCR, OMAP_UART_LCR_CONF_MDB);
 	efr = serial_read_reg(uart, UART_EFR);
@@ -285,10 +274,15 @@ static void omap_uart_restore_context(struct omap_uart_state *uart)
 	serial_write_reg(uart, UART_LCR, OMAP_UART_LCR_CONF_MOPER);
 	serial_write_reg(uart, UART_IER, uart->ier);
 	/* Enable FiFo and Trig Threshold */
+
+#ifdef DMA_FOR_UART2
 	if (uart->dma_enabled)
 		serial_write_reg(uart, UART_FCR, 0x59);
 	else
 		serial_write_reg(uart, UART_FCR, 0x51);
+#else
+		serial_write_reg(uart, UART_FCR, 0x51);
+#endif
 
 	serial_write_reg(uart, UART_LCR, OMAP_UART_LCR_CONF_MDA);
 	serial_write_reg(uart, UART_MCR, uart->mcr);
@@ -300,12 +294,18 @@ static void omap_uart_restore_context(struct omap_uart_state *uart)
 	serial_write_reg(uart, UART_OMAP_WER, uart->wer);
 	serial_write_reg(uart, UART_OMAP_SYSC, uart->sysc);
 
+#ifdef DMA_FOR_UART2
 	if (uart->dma_enabled && cpu_is_omap44xx()) {
 		serial_write_reg(uart, UART_TX_DMA_THRESHOLD, uart->dma_thresh);
 		serial_write_reg(uart, UART_MDR3, uart->mdr3);
 	}
+#endif
 
-	serial_write_reg(uart, UART_OMAP_MDR1, 0x00); /* UART 16x mode */
+	if (uart->dma_enabled)
+		omap_uart_mdr1_errataset(uart->num, 0x00, 0x59);
+	else
+		omap_uart_mdr1_errataset(uart->num, 0x00, 0x51);
+
 }
 #else
 static inline void omap_uart_save_context(struct omap_uart_state *uart) {}
@@ -436,7 +436,7 @@ static void omap_uart_idle_timer(unsigned long data)
 	 * if port is active then dont allow
 	 * sleep.
 	 */
-	if (omap_uart_active(uart->num, uart->timeout)) {
+	if (omap_uart_active(uart->num)) {
 		omap_uart_block_sleep(uart);
 		return;
 	}
@@ -460,7 +460,6 @@ void omap_uart_prepare_idle(int num)
 void omap_uart_resume_idle(int num)
 {
 	struct omap_uart_state *uart;
-
 	list_for_each_entry(uart, &uart_list, node) {
 		if (num == uart->num) {
 			omap_uart_enable_clocks(uart);
@@ -477,14 +476,8 @@ void omap_uart_resume_idle(int num)
 			/* Check for IO pad wakeup */
 			if (cpu_is_omap44xx() && uart->padconf) {
 				u32 p = omap_readl(uart->padconf);
-				if ((p & OMAP44XX_PADCONF_WAKEUPEVENT0) &&
-						(uart->padconf_wake_ev != 0)) {
-					if ((omap_readl(uart->padconf_wake_ev) &
-						(uart->wk_mask))) {
-						omap_uart_block_sleep(uart);
-						omap_uart_update_jiffies(1);
-					}
-				}
+				if (p & OMAP44XX_PADCONF_WAKEUPEVENT0)
+					omap_uart_block_sleep(uart);
 			}
 
 			/* Check for normal UART wakeup */
@@ -515,11 +508,6 @@ int omap_uart_can_sleep(void)
 			continue;
 
 		if (!uart->can_sleep) {
-			can_sleep = 0;
-			continue;
-		}
-
-		if (omap_uart_active(uart->num, uart->timeout)) {
 			can_sleep = 0;
 			continue;
 		}
@@ -571,12 +559,29 @@ void omap_uart_enable_clock_from_irq(int uart_num)
 }
 EXPORT_SYMBOL(omap_uart_enable_clock_from_irq);
 
+static void omap_uart_rtspad_init(struct omap_uart_state *uart)
+{
+	if (!cpu_is_omap44xx())
+		return;
+	switch (uart->num) {
+	case UART2:
+//		uart->rts_padconf = 0x4A10011A;
+	uart->rts_override = 0;
+    uart->rts_padconf = 0x4A100118;
+
+		break;
+	default:
+		uart->rts_padconf = 0;
+		break;
+	}
+}
+
 static void omap_uart_idle_init(struct omap_uart_state *uart)
 {
 	int ret;
 
 	uart->can_sleep = 0;
-	uart->timeout = msecs_to_jiffies(DEFAULT_IDLE_TIMEOUT);
+	uart->timeout = DEFAULT_TIMEOUT;
 	setup_timer(&uart->timer, omap_uart_idle_timer,
 		    (unsigned long) uart);
 	if (uart->timeout)
@@ -632,33 +637,19 @@ static void omap_uart_idle_init(struct omap_uart_state *uart)
 	} else {
 		uart->wk_en = 0;
 		uart->wk_st = 0;
-		uart->padconf_wake_ev = 0;
 		uart->wk_mask = 0;
 		switch (uart->num) {
 		case 0:
-			/* FIXME : Reference platform does not have a device
-			 * connected to UART Port 0. Since UART1 is muxable
-			 * need to add code to find corresponding wake event
-			 * pad.
-			 */
 			uart->padconf = 0x4A1000E4;
-			uart->padconf_wake_ev = 0;
-			uart->wk_mask = 0;
 			break;
 		case 1:
-			uart->padconf = 0x4A10011C;
-			uart->padconf_wake_ev = 0x4A1001E4;
-			uart->wk_mask = 0x0000F000;
+			uart->padconf = 0x4A100118;
 			break;
 		case 2:
 			uart->padconf = 0x4A100144;
-			uart->padconf_wake_ev = 0x4A1001E8;
-			uart->wk_mask = 0x0000000F;
 			break;
 		case 3:
 			uart->padconf = 0x4A10015C;
-			uart->padconf_wake_ev = 0x4A1001E8;
-			uart->wk_mask = 0x000C0000;
 			break;
 		}
 	}
@@ -694,7 +685,7 @@ static ssize_t sleep_timeout_show(struct device *dev,
 	struct omap_device *odev = to_omap_device(pdev);
 	struct omap_uart_state *uart = odev->hwmods[0]->dev_attr;
 
-	return sprintf(buf, "%u\n", jiffies_to_msecs(uart->timeout));
+	return sprintf(buf, "%u\n", uart->timeout / HZ);
 }
 
 static ssize_t sleep_timeout_store(struct device *dev,
@@ -711,7 +702,7 @@ static ssize_t sleep_timeout_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	uart->timeout = msecs_to_jiffies(value);
+	uart->timeout = value * HZ;
 	if (uart->timeout)
 		mod_timer(&uart->timer, jiffies + uart->timeout);
 	else
@@ -892,21 +883,21 @@ void __init omap_serial_init_port(int port,
 	uart->dma_enabled = platform_data->use_dma;
 	omap_up.use_dma = platform_data->use_dma;
 	omap_up.dma_rx_buf_size = platform_data->dma_rx_buf_size;
-	omap_up.dma_rx_poll_rate = platform_data->dma_rx_poll_rate;
 	omap_up.dma_rx_timeout = platform_data->dma_rx_timeout;
 
+#ifdef DMA_FOR_UART2
 	if (omap_up.use_dma) {
 		if (cpu_is_omap44xx() && (omap_rev() > OMAP4430_REV_ES1_0))
 			omap_up.omap4_tx_threshold = true;
 	}
+#endif
 
 	omap_up.uartclk = OMAP24XX_BASE_BAUD * 16;
 	omap_up.mapbase = uart->mapbase;
 	omap_up.membase = uart->membase;
 	omap_up.irqflags = IRQF_SHARED;
 	omap_up.flags = UPF_BOOT_AUTOCONF | UPF_SHARE_IRQ;
-	omap_up.idle_timeout = platform_data->idle_timeout;
-	omap_up.plat_hold_wakelock = platform_data->plat_hold_wakelock;
+	omap_up.idle_timeout = (platform_data->idle_timeout * HZ);
 
 	pdata = &omap_up;
 	pdata_size = sizeof(struct omap_uart_port_info);
@@ -943,7 +934,7 @@ void __init omap_serial_init_port(int port,
 	 */
 	uart->timeout = (30 * HZ);
 	omap_uart_block_sleep(uart);
-	uart->timeout = msecs_to_jiffies(platform_data->idle_timeout);
+	uart->timeout = (platform_data->idle_timeout * HZ);
 
 	if (((cpu_is_omap34xx() || cpu_is_omap44xx())
 		 && uart->padconf) ||

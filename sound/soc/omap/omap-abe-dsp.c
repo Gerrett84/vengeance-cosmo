@@ -60,6 +60,7 @@
 #include "omap-abe-coef.h"
 #include "omap-abe.h"
 #include "abe/abe_main.h"
+#include "../../../arch/arm/mach-omap2/mux.h"
 
 // TODO: change to S16 and use ARM SIMD to re-format to S32
 #define ABE_FORMATS	 (SNDRV_PCM_FMTBIT_S32_LE)
@@ -196,8 +197,8 @@ static void abe_irq_pingpong_subroutine(void)
 		abe->first_irq = 0;
 	} else {
 		if (abe->psubs)
-			snd_pcm_period_elapsed(abe->psubs);
-	}
+	snd_pcm_period_elapsed(abe->psubs);
+}
 }
 
 static irqreturn_t abe_irq_handler(int irq, void *dev_id)
@@ -224,6 +225,8 @@ static int abe_init_engine(struct snd_soc_platform *platform)
 	abe_equ_t dl2_eq;
 	int ret = 0;
 
+	printk("********RD: %s Enter \n", __func__);
+
 	abe_init_mem(abe->io_base);
 
 	/* aess_clk has to be enabled to access hal register.
@@ -239,27 +242,61 @@ static int abe_init_engine(struct snd_soc_platform *platform)
 		return ret;
 	}
 
+	printk("********RD: %s abe_reset_hal \n", __func__);
 	abe_reset_hal();
 
+	printk("********RD: %s abe_load_fw \n", __func__);
 	abe_load_fw();	// TODO: use fw API here
 
 	/* Config OPP 100 for now */
 	mutex_lock(&abe->opp_mutex);
-	abe_set_opp_processing(ABE_OPP100);
-	abe->opp = 100;
+	abe_set_opp_processing(ABE_OPP25);
+	abe->opp = 25;
 	mutex_unlock(&abe->opp_mutex);
 
 	/* "tick" of the audio engine */
-	abe_write_event_generator(EVENT_TIMER);
+	abe_stop_event_generator();
+//	abe_write_event_generator(EVENT_TIMER);
 
 	dl2_eq.equ_length = NBDL2COEFFS;
+
+	abe_mute_gain(MIXSDT, MIX_SDT_INPUT_UP_MIXER);
+	abe_mute_gain(MIXSDT, MIX_SDT_INPUT_DL1_MIXER);
+	abe_mute_gain(MIXAUDUL, MIX_AUDUL_INPUT_MM_DL);
+	abe_mute_gain(MIXAUDUL, MIX_AUDUL_INPUT_TONES);
+	abe_mute_gain(MIXAUDUL, MIX_AUDUL_INPUT_UPLINK);
+	abe_mute_gain(MIXAUDUL, MIX_AUDUL_INPUT_VX_DL);
+	abe_mute_gain(MIXVXREC, MIX_VXREC_INPUT_TONES);
+	abe_mute_gain(MIXVXREC, MIX_VXREC_INPUT_VX_DL);
+	abe_mute_gain(MIXVXREC, MIX_VXREC_INPUT_MM_DL);
+	abe_mute_gain(MIXVXREC, MIX_VXREC_INPUT_VX_UL);
+	abe_mute_gain(MIXDL1, MIX_DL1_INPUT_MM_DL);
+	abe_mute_gain(MIXDL1, MIX_DL1_INPUT_MM_UL2);
+	abe_mute_gain(MIXDL1, MIX_DL1_INPUT_VX_DL);
+	abe_mute_gain(MIXDL1, MIX_DL1_INPUT_TONES);
+	abe_mute_gain(MIXDL2, MIX_DL2_INPUT_TONES);
+	abe_mute_gain(MIXDL2, MIX_DL2_INPUT_VX_DL);
+	abe_mute_gain(MIXDL2, MIX_DL2_INPUT_MM_DL);
+	abe_mute_gain(MIXDL2, MIX_DL2_INPUT_MM_UL2);
+	abe_mute_gain(MIXECHO, MIX_ECHO_DL1);
+	abe_mute_gain(MIXECHO, MIX_ECHO_DL2);
+	abe_mute_gain(GAINS_DMIC1, GAIN_LEFT_OFFSET);
+	abe_mute_gain(GAINS_DMIC1, GAIN_RIGHT_OFFSET);
+	abe_mute_gain(GAINS_DMIC2, GAIN_LEFT_OFFSET);
+	abe_mute_gain(GAINS_DMIC2, GAIN_RIGHT_OFFSET);
+	abe_mute_gain(GAINS_DMIC3, GAIN_LEFT_OFFSET);
+	abe_mute_gain(GAINS_DMIC3, GAIN_RIGHT_OFFSET);
+	abe_mute_gain(GAINS_AMIC, GAIN_LEFT_OFFSET);
+	abe_mute_gain(GAINS_AMIC, GAIN_RIGHT_OFFSET);
+	abe_mute_gain(GAINS_BTUL, GAIN_LEFT_OFFSET);
+	abe_mute_gain(GAINS_BTUL, GAIN_RIGHT_OFFSET);
 
 	/* build the coefficient parameter for the equalizer api */
 	memcpy(dl2_eq.coef.type1, dl20_equ_coeffs[1],
 				sizeof(dl20_equ_coeffs[1]));
 
 	/* load the high-pass coefficient of IHF-Right */
-	abe_write_equalizer(EQ2L, &dl2_eq);
+//	abe_write_equalizer(EQ2L, &dl2_eq);
 	abe->dl20_equ_profile = 1;
 
 	/* build the coefficient parameter for the equalizer api */
@@ -267,7 +304,7 @@ static int abe_init_engine(struct snd_soc_platform *platform)
 				sizeof(dl21_equ_coeffs[1]));
 
 	/* load the high-pass coefficient of IHF-Left */
-	abe_write_equalizer(EQ2R, &dl2_eq);
+//	abe_write_equalizer(EQ2R, &dl2_eq);
 	abe->dl21_equ_profile = 1;
 
 	pm_runtime_put_sync(&pdev->dev);
@@ -278,7 +315,8 @@ static int abe_init_engine(struct snd_soc_platform *platform)
 	abe->dl1_equ_profile = 0;
 	abe->sdt_equ_profile = 0;
 
-
+	printk("********RD: %s Exit \n", __func__);
+	
 	return ret;
 }
 
@@ -302,14 +340,23 @@ void abe_dsp_shutdown(void)
 {
         /* TODO: do not use abe global structure to assign pdev */
         struct platform_device *pdev = abe->pdev;
+		
+	printk("********RD: %s Enter \n", __func__);
 
 	if (!abe->active && !abe_check_activity()) {
+
+		
+		printk("********RD: %s Enter \n", __func__);
+		
 		abe_set_opp_processing(ABE_OPP25);
 		abe->opp = 25;
 		abe_stop_event_generator();
-		udelay(250);
+		udelay(1000);
 		omap_device_set_rate(&pdev->dev, &pdev->dev, 0);
+		udelay(1000);
 	}
+	
+	printk("********RD: %s Exit \n", __func__);
 }
 
 void abe_dsp_mcpdm_shutdown(void)
@@ -383,6 +430,12 @@ static DECLARE_TLV_DB_SCALE(vxrec_vx_ul_tlv, -12000, 100, 3000);
 
 /* DMIC volume control from -120 to 30 dB in 1 dB steps */
 static DECLARE_TLV_DB_SCALE(dmic_tlv, -12000, 100, 3000);
+
+/* AMIC volume control from -120 to 30 dB in 1 dB steps */
+static DECLARE_TLV_DB_SCALE(amic_tlv, -12000, 100, 3000);
+
+/* BT UL volume control from -120 to 30 dB in 1 dB steps */
+static DECLARE_TLV_DB_SCALE(btul_tlv, -12000, 100, 3000);
 
 //TODO: we have to use the shift value atm to represent register id due to current HAL
 static int dl1_put_mixer(struct snd_kcontrol *kcontrol,
@@ -643,7 +696,7 @@ static int volume_put_audul_mixer(struct snd_kcontrol *kcontrol,
 
 	pm_runtime_get_sync(&pdev->dev);
 	abe_write_mixer(MIXAUDUL, -12000 + (ucontrol->value.integer.value[0] * 100),
-				RAMP_0MS, mc->reg);
+				RAMP_5MS, mc->reg);
 	pm_runtime_put_sync(&pdev->dev);
 
 	return 1;
@@ -672,10 +725,34 @@ static int volume_put_dl1_mixer(struct snd_kcontrol *kcontrol,
 		(struct soc_mixer_control *)kcontrol->private_value;
 	/* TODO: do not use abe global structure to assign pdev */
 	struct platform_device *pdev = abe->pdev;
+	int ramp_time = RAMP_0MS;
+	
+	pm_runtime_get_sync(&pdev->dev);
+	
+	if( mc->reg == MIX_DL1_INPUT_MM_UL2 )
+		ramp_time = RAMP_5MS;
+	
+	abe_write_mixer(MIXDL1, -12000 + (ucontrol->value.integer.value[0] * 100),
+				ramp_time, mc->reg);
+	
+	pm_runtime_put_sync(&pdev->dev);
+
+	return 1;
+}
+
+static int volume_put_amic(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	/* TODO: do not use abe global structure to assign pdev */
+	struct platform_device *pdev = abe->pdev;
 
 	pm_runtime_get_sync(&pdev->dev);
-	abe_write_mixer(MIXDL1, -12000 + (ucontrol->value.integer.value[0] * 100),
-				RAMP_0MS, mc->reg);
+	abe_write_mixer(GAINS_AMIC, -12000 + (ucontrol->value.integer.value[0] * 100),
+				RAMP_1000MS, GAIN_LEFT_OFFSET);
+	abe_write_mixer(GAINS_AMIC, -12000 + (ucontrol->value.integer.value[0] * 100),
+				RAMP_1000MS, GAIN_RIGHT_OFFSET);
 	pm_runtime_put_sync(&pdev->dev);
 
 	return 1;
@@ -688,16 +765,21 @@ static int volume_put_dl2_mixer(struct snd_kcontrol *kcontrol,
 		(struct soc_mixer_control *)kcontrol->private_value;
 	/* TODO: do not use abe global structure to assign pdev */
 	struct platform_device *pdev = abe->pdev;
+	int ramp_time = RAMP_0MS;
 
 	pm_runtime_get_sync(&pdev->dev);
+	if( mc->reg == MIX_DL2_INPUT_MM_UL2 )
+		ramp_time = RAMP_5MS;
+
 	abe_write_mixer(MIXDL2, -12000 + (ucontrol->value.integer.value[0] * 100),
-				RAMP_0MS, mc->reg);
+				ramp_time, mc->reg);
+	
 	pm_runtime_put_sync(&pdev->dev);
 
 	return 1;
 }
 
-static int volume_put_dmic(struct snd_kcontrol *kcontrol,
+static int volume_put_gain(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct soc_mixer_control *mc =
@@ -728,6 +810,23 @@ static int volume_get_dl1_mixer(struct snd_kcontrol *kcontrol,
 
 	pm_runtime_get_sync(&pdev->dev);
 	abe_read_mixer(MIXDL1, &val, mc->reg);
+	ucontrol->value.integer.value[0] = (val + 12000) / 100;
+	pm_runtime_put_sync(&pdev->dev);
+
+	return 0;
+}
+
+static int volume_get_amic(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	u32 val;
+	/* TODO: do not use abe global structure to assign pdev */
+	struct platform_device *pdev = abe->pdev;
+
+	pm_runtime_get_sync(&pdev->dev);
+	abe_read_mixer(GAINS_AMIC, &val, GAIN_LEFT_OFFSET);
 	ucontrol->value.integer.value[0] = (val + 12000) / 100;
 	pm_runtime_put_sync(&pdev->dev);
 
@@ -802,7 +901,7 @@ static int volume_get_sdt_mixer(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static int volume_get_dmic(struct snd_kcontrol *kcontrol,
+static int volume_get_gain(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct soc_mixer_control *mc =
@@ -919,6 +1018,8 @@ static const char *dl1_equ_texts[] = {
 	"High-pass 0dB",
 	"High-pass -12dB",
 	"High-pass -20dB",
+	"Low-pass 4kHz 0dB- Att 20dB",
+	"Low-pass 8kHz 0dB- Att 20dB",
 };
 
 static const char *dl20_equ_texts[] = {
@@ -926,6 +1027,8 @@ static const char *dl20_equ_texts[] = {
 	"High-pass 0dB",
 	"High-pass -12dB",
 	"High-pass -20dB",
+	"Low-pass 4kHz 0dB- Att 20dB",
+	"Low-pass 8kHz 0dB- Att 20dB",
 };
 
 static const char *dl21_equ_texts[] = {
@@ -933,15 +1036,19 @@ static const char *dl21_equ_texts[] = {
 	"High-pass 0dB",
 	"High-pass -12dB",
 	"High-pass -20dB",
+	"Low-pass 4kHz 0dB- Att 20dB",
+	"Low-pass 8kHz 0dB- Att 20dB",
 };
 
 static const char *amic_equ_texts[] = {
 	"High-pass 0dB",
 	"High-pass -12dB",
 	"High-pass -18dB",
+	"Flat response",
 };
 
 static const char *dmic_equ_texts[] = {
+	"Flat response",
 	"High-pass 0dB",
 	"High-pass -12dB",
 	"High-pass -18dB",
@@ -1156,10 +1263,10 @@ static const struct snd_kcontrol_new abe_controls[] = {
 		MIX_VXREC_INPUT_TONES, 0, 149, 0,
 		volume_get_vxrec_mixer, volume_put_vxrec_mixer, vxrec_tones_tlv),
 	SOC_SINGLE_EXT_TLV("VXREC Voice DL Volume",
-		MIX_VXREC_INPUT_VX_UL, 0, 149, 0,
+		MIX_VXREC_INPUT_VX_DL, 0, 149, 0,
 		volume_get_vxrec_mixer, volume_put_vxrec_mixer, vxrec_vx_dl_tlv),
 	SOC_SINGLE_EXT_TLV("VXREC Voice UL Volume",
-		MIX_VXREC_INPUT_VX_DL, 0, 149, 0,
+		MIX_VXREC_INPUT_VX_UL, 0, 149, 0,
 		volume_get_vxrec_mixer, volume_put_vxrec_mixer, vxrec_vx_ul_tlv),
 
 	/* AUDUL mixer gains */
@@ -1187,15 +1294,23 @@ static const struct snd_kcontrol_new abe_controls[] = {
 	/* DMIC gains */
 	SOC_DOUBLE_EXT_TLV("DMIC1 UL Volume",
 		GAINS_DMIC1, GAIN_LEFT_OFFSET, GAIN_RIGHT_OFFSET, 149, 0,
-		volume_get_dmic, volume_put_dmic, dmic_tlv),
+		volume_get_gain, volume_put_gain, dmic_tlv),
 
 	SOC_DOUBLE_EXT_TLV("DMIC2 UL Volume",
 		GAINS_DMIC2, GAIN_LEFT_OFFSET, GAIN_RIGHT_OFFSET, 149, 0,
-		volume_get_dmic, volume_put_dmic, dmic_tlv),
+		volume_get_gain, volume_put_gain, dmic_tlv),
 
 	SOC_DOUBLE_EXT_TLV("DMIC3 UL Volume",
 		GAINS_DMIC3, GAIN_LEFT_OFFSET, GAIN_RIGHT_OFFSET, 149, 0,
-		volume_get_dmic, volume_put_dmic, dmic_tlv),
+		volume_get_gain, volume_put_gain, dmic_tlv),
+
+	SOC_DOUBLE_EXT_TLV("AMIC UL Volume",
+		GAINS_AMIC, GAIN_LEFT_OFFSET, GAIN_RIGHT_OFFSET, 149, 0,
+		volume_get_gain, volume_put_gain, amic_tlv),
+
+	SOC_DOUBLE_EXT_TLV("BT UL Volume",
+		GAINS_BTUL, GAIN_LEFT_OFFSET, GAIN_RIGHT_OFFSET, 149, 0,
+		volume_get_gain, volume_put_gain, btul_tlv),
 
 	SOC_ENUM_EXT("DL1 Equalizer",
 			dl1_equalizer_enum ,
@@ -1220,6 +1335,10 @@ static const struct snd_kcontrol_new abe_controls[] = {
 	SOC_ENUM_EXT("Sidetone Equalizer",
 			sdt_equalizer_enum ,
 			abe_get_equalizer, abe_put_equalizer),
+
+	SOC_SINGLE_EXT_TLV("AMIC Volume",
+		0, 0, 149, 0,
+		volume_get_amic, volume_put_amic, amic_tlv),
 };
 
 static const struct snd_soc_dapm_widget abe_dapm_widgets[] = {
@@ -1671,6 +1790,8 @@ static int aess_set_opp_mode(void)
 
 	opp = (1 << (fls(opp) - 1)) * 25;
 
+	//printk("***********RD: change the OPP [%d] abe->opp [%d] \n", opp, abe->opp);
+	
 	if (abe->opp > opp) {
 		/* Decrease OPP mode - no need of OPP100% */
 		switch (opp) {
@@ -1731,6 +1852,8 @@ static int aess_save_context(struct abe_data *abe)
 	struct platform_device *pdev = abe->pdev;
 	struct omap4_abe_dsp_pdata *pdata = pdev->dev.platform_data;
 
+	printk("*******RD: %s Enter \n", __func__);
+
 	/* TODO: Find a better way to save/retore gains after OFF mode */
 	abe_mute_gain(MIXSDT, MIX_SDT_INPUT_UP_MIXER);
 	abe_mute_gain(MIXSDT, MIX_SDT_INPUT_DL1_MIXER);
@@ -1760,9 +1883,13 @@ static int aess_save_context(struct abe_data *abe)
 	abe_mute_gain(GAINS_DMIC3, GAIN_RIGHT_OFFSET);
 	abe_mute_gain(GAINS_AMIC, GAIN_LEFT_OFFSET);
 	abe_mute_gain(GAINS_AMIC, GAIN_RIGHT_OFFSET);
+	abe_mute_gain(GAINS_BTUL, GAIN_LEFT_OFFSET);
+	abe_mute_gain(GAINS_BTUL, GAIN_RIGHT_OFFSET);
 
 	if (pdata->get_context_loss_count)
 		abe->loss_count = pdata->get_context_loss_count(&pdev->dev);
+
+	printk("*******RD: %s Exit \n", __func__);
 
 	return 0;
 }
@@ -1773,13 +1900,17 @@ static int aess_restore_context(struct abe_data *abe)
 	struct omap4_abe_dsp_pdata *pdata = pdev->dev.platform_data;
 	int loss_count = 0;
 
+	printk("*******RD: %s Enter \n", __func__);
 	omap_device_set_rate(&pdev->dev, &pdev->dev, 98000000);
 
 	if (pdata->get_context_loss_count)
 		loss_count = pdata->get_context_loss_count(&pdev->dev);
 
-	if  (loss_count != abe->loss_count)
-		abe_reload_fw();
+	printk("*********RD: loss_count[%d], abe->loss_count[%d] \n", loss_count, abe->loss_count);
+//	if  (loss_count != abe->loss_count)
+	{
+			abe_reload_fw();
+	}
 
 	/* TODO: Find a better way to save/retore gains after dor OFF mode */
 	abe_unmute_gain(MIXSDT, MIX_SDT_INPUT_UP_MIXER);
@@ -1810,6 +1941,8 @@ static int aess_restore_context(struct abe_data *abe)
 	abe_unmute_gain(GAINS_DMIC3, GAIN_RIGHT_OFFSET);
 	abe_unmute_gain(GAINS_AMIC, GAIN_LEFT_OFFSET);
 	abe_unmute_gain(GAINS_AMIC, GAIN_RIGHT_OFFSET);
+	abe_unmute_gain(GAINS_BTUL, GAIN_LEFT_OFFSET);
+	abe_unmute_gain(GAINS_BTUL, GAIN_RIGHT_OFFSET);
 
 	abe_dsp_set_equalizer(EQ1, abe->dl1_equ_profile);
 	abe_dsp_set_equalizer(EQ2L, abe->dl20_equ_profile);
@@ -1819,6 +1952,11 @@ static int aess_restore_context(struct abe_data *abe)
 	abe_dsp_set_equalizer(EQSDT, abe->sdt_equ_profile);
 
 	abe_set_router_configuration(UPROUTE, 0, (u32 *)abe->router);
+
+	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_100MS, GAIN_LEFT_OFFSET);
+	abe_write_gain(GAINS_SPLIT, GAIN_0dB, RAMP_100MS, GAIN_RIGHT_OFFSET);
+
+	printk("*******RD: %s Exit \n", __func__);
 
 	return 0;
 }
@@ -1831,15 +1969,17 @@ static int aess_open(struct snd_pcm_substream *substream)
 	struct platform_device *pdev = abe->pdev;
 	int ret = 0;
 
+	printk("********RD: %s Enter abe->active [%d] \n", __func__, abe->active+1);
+	
 	mutex_lock(&abe->mutex);
 
 	abe->fe_id = dai->id;
 	dev_dbg(&rtd->dev, "%s ID %d\n", __func__, dai->id);
 
 	pm_runtime_get_sync(&pdev->dev);
-
+	
 	if (!abe->active++) {
-		abe->opp = 0;
+		abe->opp = 0;		
 		aess_restore_context(abe);
 		aess_set_opp_mode();
 		abe_wakeup();
@@ -1847,6 +1987,27 @@ static int aess_open(struct snd_pcm_substream *substream)
 
 	switch (dai->id) {
 	case ABE_FRONTEND_DAI_MODEM:
+	case ABE_FRONTEND_DAI_MEDIA_CAPTURE:
+	case ABE_FRONTEND_DAI_TONES:
+	{
+// In case of call or FM radio, CPU may be in "deep sleep" state.
+// In "deep sleep" state, volume key should be working.
+// omap_mux_enable_wakeup() api make kernel panic.(I don't know the reason.)
+// So, I write kpd_col0/1 and kpd_row0/1 register directly.
+		unsigned short val;
+		val = omap_readw(0x4a10017c);
+		val |= (1<<14);
+		omap_writew(val, 0x4a10017c);
+		val = omap_readw(0x4a10017e);
+		val |= (1<<14);
+		omap_writew(val, 0x4a10017e);
+		val = omap_readw(0x4a100188);
+		val |= (1<<14);
+		omap_writew(val, 0x4a100188);
+		val = omap_readw(0x4a10018a);
+		val |= (1<<14);
+		omap_writew(val, 0x4a10018a);
+	}
 		break;
 	case ABE_FRONTEND_DAI_LP_MEDIA:
 		snd_soc_set_runtime_hwparams(substream, &omap_abe_hardware);
@@ -1858,9 +2019,10 @@ static int aess_open(struct snd_pcm_substream *substream)
 	}
 
 	mutex_unlock(&abe->mutex);
+	
+	printk("********RD: %s Exit \n", __func__);
 	return ret;
 }
-
 static int abe_ping_pong_init(struct snd_pcm_hw_params *params,
 	struct snd_pcm_substream *substream)
 {
@@ -1950,11 +2112,40 @@ static int aess_close(struct snd_pcm_substream *substream)
 	/* TODO: do not use abe global structure to assign pdev */
 	struct platform_device *pdev = abe->pdev;
 
+	printk("********RD: %s Enter abe->active [%d] \n", __func__, abe->active-1);
+
 	mutex_lock(&abe->mutex);
 
 	abe->fe_id = dai->id;
 	dev_dbg(&rtd->dev, "%s ID %d\n", __func__, dai->id);
 
+	switch (dai->id) {
+	case ABE_FRONTEND_DAI_MODEM:
+	case ABE_FRONTEND_DAI_MEDIA_CAPTURE:
+	case ABE_FRONTEND_DAI_TONES:
+	{
+// In case of call or FM radio, CPU may be in "deep sleep" state.
+// In "deep sleep" state, volume key should be working.
+// omap_mux_enable_wakeup() api make kernel panic.(I don't know the reason.)
+// So, I write kpd_col0/1 and kpd_row0/1 register directly.
+		unsigned short val;
+		val = omap_readw(0x4a10017c);
+		val &= ~(1<<14);
+		omap_writew(val, 0x4a10017c);
+		val = omap_readw(0x4a10017e);
+		val &= ~(1<<14);
+		omap_writew(val, 0x4a10017e);
+		val = omap_readw(0x4a100188);
+		val &= ~(1<<14);
+		omap_writew(val, 0x4a100188);
+		val = omap_readw(0x4a10018a);
+		val &= ~(1<<14);
+		omap_writew(val, 0x4a10018a);
+	}
+		break;
+	}
+	
+	//printk("********RD: abe->active [%d] \n", abe->active);
 	if (!--abe->active) {
 		abe_disable_irq();
 		aess_save_context(abe);
@@ -1963,6 +2154,7 @@ static int aess_close(struct snd_pcm_substream *substream)
 	pm_runtime_put_sync(&pdev->dev);
 
 	mutex_unlock(&abe->mutex);
+	printk("********RD: %s Exit \n", __func__);
 	return 0;
 }
 
@@ -2047,7 +2239,7 @@ static int omap_pm_abe_get_dev_context_loss_count(struct device *dev)
 		prm_write_mod_reg(0x0001, abe_pwrdm->prcm_offs,
 			abe_pwrdm->context_offset);
 		ret &= ~0x0001;
-	}
+}
 
 	if ((ret & 0x0100) == 0x0100)
 		prm_write_mod_reg(0x0100, abe_pwrdm->prcm_offs,

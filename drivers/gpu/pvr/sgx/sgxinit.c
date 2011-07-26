@@ -67,6 +67,11 @@
 	}	\
 }
 
+#if defined(SUPPORT_HW_RECOVERY)
+unsigned int sgx_manual_recovery = 0;
+#endif
+
+
 #if defined (SYS_USING_INTERRUPTS)
 IMG_BOOL SGX_ISRHandler(IMG_VOID *pvData);
 #endif
@@ -995,6 +1000,9 @@ static IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
 		}
 		#endif 
 	}
+	#if defined(SUPPORT_HW_RECOVERY)
+	sgx_manual_recovery = 1;
+	#endif
 }
 
 
@@ -1027,6 +1035,7 @@ IMG_VOID HWRecoveryResetSGX (PVRSRV_DEVICE_NODE *psDeviceNode,
 	PVR_LOG(("HWRecoveryResetSGX: SGX Hardware Recovery triggered"));
 
 	SGXDumpDebugInfo(psDeviceNode->pvDevice, IMG_TRUE);
+	sgx_manual_recovery = 0;
 
 
 	PDUMPSUSPEND();
@@ -1083,8 +1092,6 @@ IMG_VOID SGXOSTimer(IMG_VOID *pvData)
 #else
 	bPoweredDown = (SGXIsDevicePowered(psDeviceNode)) ? IMG_FALSE : IMG_TRUE;
 #endif
-
-
 
 	if (bPoweredDown)
 	{
@@ -1152,6 +1159,14 @@ IMG_VOID SGXOSTimer(IMG_VOID *pvData)
 			ui32NumResets = psDevInfo->ui32NumResets;
 		}
 	}
+
+
+	if(sgx_manual_recovery == 1)
+	{
+		bLockup = IMG_TRUE;
+		sgx_manual_recovery = 0;
+	}
+	
 
 	if (bLockup)
 	{

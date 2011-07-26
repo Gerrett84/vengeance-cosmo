@@ -24,6 +24,9 @@
 #endif
 #include "power.h"
 
+
+#include <linux/rtc.h> 
+
 enum {
 	DEBUG_EXIT_SUSPEND = 1U << 0,
 	DEBUG_WAKEUP = 1U << 1,
@@ -31,7 +34,12 @@ enum {
 	DEBUG_EXPIRE = 1U << 3,
 	DEBUG_WAKE_LOCK = 1U << 4,
 };
-static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP;
+
+//static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP;
+static int debug_mask = DEBUG_SUSPEND| DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP;
+//static int debug_mask = DEBUG_SUSPEND| DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP | DEBUG_EXPIRE;
+
+
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define WAKE_LOCK_TYPE_MASK              (0x0f)
@@ -258,6 +266,103 @@ long has_wake_lock(int type)
 	spin_unlock_irqrestore(&list_lock, irqflags);
 	return ret;
 }
+
+
+static void print_active_locks_debug(void)
+{
+	struct wake_lock *lock;
+	bool print_expired = true;
+	unsigned long irqflags;
+	spin_lock_irqsave(&list_lock, irqflags);
+
+	pr_info("===== debug info =====\n");
+	list_for_each_entry(lock, &active_wake_locks[WAKE_LOCK_SUSPEND], link) {
+		if ((lock->flags & WAKE_LOCK_ACTIVE) && !(lock->flags & WAKE_LOCK_AUTO_EXPIRE)) {
+			pr_info("suspend active wake lock %s\n", lock->name);
+		}
+	}
+	list_for_each_entry(lock, &active_wake_locks[WAKE_LOCK_IDLE], link) {
+		if ((lock->flags & WAKE_LOCK_ACTIVE) && !(lock->flags & WAKE_LOCK_AUTO_EXPIRE)) {
+			pr_info("ldle active wake lock %s\n", lock->name);
+		}
+	}
+	pr_info("===== debug info =====\n\n");	
+	spin_unlock_irqrestore(&list_lock, irqflags);
+}
+
+
+
+
+
+static struct wake_lock *abnormal_lock;
+
+int abnormal_vl;
+EXPORT_SYMBOL(abnormal_vl);
+
+void abnormal_wake_unlock_call(int value)
+{
+	if(value == 0)
+	{
+		abnormal_vl= 0;
+	}
+	else
+	{
+		abnormal_vl= 1;
+	}
+}
+
+/* Caller must acquire the list_lock spinlock */
+int kill_abnormal_active_locks(int type)
+{
+	int ret = 0;
+	
+	//struct wake_lock *lock;
+	bool print_expired = true;
+	
+	unsigned long irqflags;
+	spin_lock_irqsave(&list_lock, irqflags);
+	
+	BUG_ON(type >= WAKE_LOCK_TYPE_COUNT);
+	list_for_each_entry(abnormal_lock, &active_wake_locks[type], link) {
+		if (abnormal_lock->flags & WAKE_LOCK_AUTO_EXPIRE) {
+			;
+		} else {
+			if(strcmp(abnormal_lock->name, "main") == 0)
+			{
+				long timeout = abnormal_lock->expires - jiffies;
+				if (abnormal_lock->flags & WAKE_LOCK_ACTIVE) {
+					if (timeout <= 0)
+					{			
+						ret = 0;
+					}
+					else
+					{
+						ret = 1;
+					}				
+				}
+			}			
+			if (!debug_mask & DEBUG_EXPIRE)
+				print_expired = false;
+		}
+	}
+	
+	spin_unlock_irqrestore(&list_lock, irqflags);
+	return ret;	
+}
+
+long find_abnormal_wake_lock(int type)
+{
+	long ret;
+	unsigned long irqflags;
+
+	spin_lock_irqsave(&list_lock, irqflags);
+
+	ret = has_wake_lock_locked(type);	
+
+	spin_unlock_irqrestore(&list_lock, irqflags);
+	return ret;
+}
+
 
 static void suspend(struct work_struct *work)
 {
@@ -489,6 +594,14 @@ void wake_unlock(struct wake_lock *lock)
 		pr_info("wake_unlock: %s\n", lock->name);
 	lock->flags &= ~(WAKE_LOCK_ACTIVE | WAKE_LOCK_AUTO_EXPIRE);
 	list_del(&lock->link);
+
+
+	if((debug_mask & DEBUG_SUSPEND) && (strcmp (lock->name, "main") == 0))
+	{
+		pr_info("\nunlock type=0x%x, expires=%ld\n\n", lock->flags, lock->expires);
+	}
+
+
 	list_add(&lock->link, &inactive_locks);
 	if (type == WAKE_LOCK_SUSPEND) {
 		long has_lock = has_wake_lock_locked(type);

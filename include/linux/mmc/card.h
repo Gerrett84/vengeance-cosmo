@@ -171,5 +171,5 @@ struct mmc_driver {
 
 extern int mmc_register_driver(struct mmc_driver *);
 extern void mmc_unregister_driver(struct mmc_driver *);
-
+extern void mmc_sd_speed_cntrol(struct mmc_host *host,int down_step);
 #endif
