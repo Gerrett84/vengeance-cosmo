@@ -134,7 +134,7 @@ const char musb_driver_name[] = MUSB_DRIVER_NAME;
 
 MODULE_DESCRIPTION(DRIVER_INFO);
 MODULE_AUTHOR(DRIVER_AUTHOR);
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" MUSB_DRIVER_NAME);
 
 
@@ -519,7 +519,7 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb,
 			}
 #endif
 		} else {
-			//otg_set_clk(musb->xceiv, 1);
+			otg_set_clk(musb->xceiv, 1);
 
 			switch (musb->xceiv->state) {
 #ifdef CONFIG_USB_MUSB_HDRC_HCD
@@ -696,7 +696,7 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb,
 							OTG_TIME_B_ASE0_BRST));
 #endif
 			}
-			//otg_set_clk(musb->xceiv, 0);
+			otg_set_clk(musb->xceiv, 0);
 			break;
 		case OTG_STATE_A_WAIT_BCON:
 			if (musb->a_wait_bcon != 0)
@@ -901,6 +901,51 @@ b_host:
 			}
 		}
 	}
+
+#if 0
+/* REVISIT ... this would be for multiplexing periodic endpoints, or
+ * supporting transfer phasing to prevent exceeding ISO bandwidth
+ * limits of a given frame or microframe.
+ *
+ * It's not needed for peripheral side, which dedicates endpoints;
+ * though it _might_ use SOF irqs for other purposes.
+ *
+ * And it's not currently needed for host side, which also dedicates
+ * endpoints, relies on TX/RX interval registers, and isn't claimed
+ * to support ISO transfers yet.
+ */
+	if (int_usb & MUSB_INTR_SOF) {
+		void __iomem *mbase = musb->mregs;
+		struct musb_hw_ep	*ep;
+		u8 epnum;
+		u16 frame;
+
+		DBG(6, "START_OF_FRAME\n");
+		handled = IRQ_HANDLED;
+
+		/* start any periodic Tx transfers waiting for current frame */
+		frame = musb_readw(mbase, MUSB_FRAME);
+		ep = musb->endpoints;
+		for (epnum = 1; (epnum < musb->nr_endpoints)
+					&& (musb->epmask >= (1 << epnum));
+				epnum++, ep++) {
+			/*
+			 * FIXME handle framecounter wraps (12 bits)
+			 * eliminate duplicated StartUrb logic
+			 */
+			if (ep->dwWaitFrame >= frame) {
+				ep->dwWaitFrame = 0;
+				pr_debug("SOF --> periodic TX%s on %d\n",
+					ep->tx_channel ? " DMA" : "",
+					epnum);
+				if (!ep->tx_channel)
+					musb_h_tx_start(musb, epnum);
+				else
+					cppi_hostdma_start(musb, epnum);
+			}
+		}		/* end of for loop */
+	}
+#endif
 
 	schedule_work(&musb->irq_work);
 
@@ -2202,9 +2247,6 @@ static int __init musb_probe(struct platform_device *pdev)
 	orig_dma_mask = dev->dma_mask;
 #endif
 	status = musb_init_controller(dev, irq, base);
-	
-	printk("musb_probe, status:%d", status);
-
 	if (status < 0)
 		iounmap(base);
 

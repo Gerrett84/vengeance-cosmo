@@ -291,7 +291,6 @@ struct fsg_lun {
 	u32		unit_attention_data;
 
 	struct device	dev;
-	char inquiry_string[8 + 16 + 4 + 1];
 };
 
 #define fsg_lun_is_open(curlun)	((curlun)->filp != NULL)
