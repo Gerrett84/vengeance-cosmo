@@ -1,4 +1,4 @@
-#obj-$(CONFIG_COSMO_VIBRATOR)	+=	vibrator.o
+obj-$(CONFIG_COSMO_VIBRATOR)	+=	vibrator.o
 obj-$(CONFIG_COSMO_KEYPAD_LEDS) += leds-keypad.o
 obj-$(CONFIG_SENSORS_APDS9900)	+=	apds9900.o	
 obj-$(CONFIG_BACKLIGHT_LM3528)	+= lm3528_bl.o
