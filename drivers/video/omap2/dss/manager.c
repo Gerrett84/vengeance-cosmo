@@ -1324,6 +1324,7 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 	struct writeback_cache_data *wbc;
 	DSSDBG("omap_dss_mgr_apply(%s)\n", mgr->name);
 
+	
 	#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
 		if(mgr->device && mgr->device->driver && mgr->device->driver->enable_s3d) {
 			enum omap_dss_overlay_s3d_type s3d_type = omap_dss_overlay_s3d_none;
@@ -1362,8 +1363,6 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 		}
 	#endif
 	
-
-	request_dss();
 
 	if (!dss_get_mainclk_state()) {
 		DSSERR("mainclk disabled while trying"
