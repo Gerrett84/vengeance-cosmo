@@ -100,12 +100,6 @@
 #define APP_M3 1
 #define TESLA 0
 
-/* If sysm3 or appm3 is requested ipu will be automatically requested
- * this is beacause the cstrs can only be set to ipu and not individually.
- * SYSM3 + APPM3 + IPU
- */
-#define MAX_IPU_COUNT 3
-
 #define PM_CSTR_PERF_MASK	0x00000001
 #define PM_CSTR_LAT_MASK	0x00000002
 #define PM_CSTR_BW_MASK		0x00000004
@@ -117,6 +111,7 @@
 #define NO_BW_CONSTRAINT		-1
 
 #define RCB_SIZE 8
+#define NAME_SIZE 20
 
 #define DATA_MAX (RCB_SIZE - 4)
 #define DATAX_MAX (RCB_SIZE - 5)
@@ -129,6 +124,9 @@
 #define AUX_CLK_MIN 0
 #define AUX_CLK_MAX 5
 #define NUM_AUX_CLK 6
+#define SRC_CLK_MIN 0
+#define SRC_CLK_MAX 2
+#define NUM_SRC_CLK 3
 
 #define GP_TIMER_3 3
 #define GP_TIMER_4 4
@@ -225,7 +223,7 @@
 #define SYS_PROC_DOWN		0x00010000
 #define APP_PROC_DOWN		0x00020000
 #define ENABLE_SELF_HIB		0x00000040
-#define START_HIB_FLAG		0x1
+#define START_HIB_FLAG		0x00010001
 
 #define SYS_PROC_HIB		0x00000001
 #define APP_PROC_HIB		0x00000002
@@ -430,8 +428,7 @@ struct sms {
 	struct rcb_block rcb[RCB_MAX];
 	struct ms_agent_block ms_agent[3];
 	struct event_int event_int;
-	unsigned hib_flag_sysm3;
-	unsigned hib_flag_appm3;
+	unsigned hib_flag;
 };
 
 struct pm_event {
@@ -470,6 +467,12 @@ struct ipu_pm_params {
 	void *gate_mp;
 	int hib_timer_state;
 	int wdt_time;
+};
+
+struct ipu_pm_aux_clks {
+	struct clk *aux_clk;
+	struct clk *aux_clk_src;
+	struct clk *aux_clk_src_parent;
 };
 
 /* This structure defines attributes for initialization of the ipu_pm module. */
