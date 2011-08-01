@@ -38,6 +38,7 @@
 #include <mach/vibrator.h>
 #include <mach/emif.h>
 #include <mach/lpddr2-elpida.h>
+#include <mach/dmm.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -1556,6 +1557,7 @@ static void __init lge_cosmopolitan_init(void)
 	omap4_i2c_init();
 	omap4_display_init();
 	conn_board_init(); /* Added for FlexST */
+        omap_dmm_init();
 	omap_display_init(&sdp4430_dss_data);
 	platform_add_devices(sdp4430_devices, ARRAY_SIZE(sdp4430_devices));
 	conn_add_plat_device(); /* Added for FlexST */
