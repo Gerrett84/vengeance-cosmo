@@ -238,8 +238,6 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 		omap_smartreflex_disable(vdd_iva);
 		omap_smartreflex_disable(vdd_core);
 
-	
-	 if (omap4_device_off_read_next_state()) {
 		omap_uart_prepare_idle(0);
 		omap_uart_prepare_idle(1);
 		omap_uart_prepare_idle(2);
@@ -275,6 +273,10 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 	 * This call will be required for offmode support to save and restore
 	 * context in the idle path oddmode support only.
 	*/
+#if 0
+	if (core_next_state < PWRDM_POWER_ON)
+		musb_context_save_restore(disable_clk);
+#endif
 	if (omap4_device_off_read_next_state()) {
 		omap4_prcm_prepare_off();
 		/* Save the device context to SAR RAM */
@@ -298,6 +300,11 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 	 * This call will be required for offmode support to save and restore
 	 * context in the idle path oddmode support only.
 	*/
+#if 0
+	if (core_next_state < PWRDM_POWER_ON)
+		musb_context_save_restore(enable_clk);
+
+#endif
 
 	if (core_next_state < PWRDM_POWER_ON) {
 		if (!omap4_device_off_read_next_state()) {
@@ -325,13 +332,6 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 		omap_uart_resume_idle(1);
 		omap_uart_resume_idle(2);
 		omap_uart_resume_idle(3);
-	}
-  if (omap4_device_off_read_next_state())
-   omap2_dma_context_restore();
-		
-		
-		omap_hsi_resume_idle();
-		
 
 		/* Enable SR for IVA and CORE */
 		omap_smartreflex_enable(vdd_iva);
@@ -756,7 +756,13 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	if (!pwrst)
 		return -ENOMEM;
 	pwrst->pwrdm = pwrdm;
-	pwrst->next_state = PWRDM_POWER_RET;
+	if ((!strcmp(pwrdm->name, mpu_pwrdm->name)) ||
+			(!strcmp(pwrdm->name, core_pwrdm->name)) ||
+			(!strcmp(pwrdm->name, cpu0_pwrdm->name)) ||
+			(!strcmp(pwrdm->name, cpu1_pwrdm->name)))
+		pwrst->next_state = PWRDM_POWER_ON;
+	else
+		pwrst->next_state = PWRDM_POWER_RET;
 	list_add(&pwrst->node, &pwrst_list);
 
 	return omap4_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
@@ -980,6 +986,12 @@ static int __init omap4_pm_init(void)
 		return -ENODEV;
 
 	pr_err("Power Management for TI OMAP4.\n");
+	mpu_pwrdm = pwrdm_lookup("mpu_pwrdm");
+	cpu0_pwrdm = pwrdm_lookup("cpu0_pwrdm");
+	cpu1_pwrdm = pwrdm_lookup("cpu1_pwrdm");
+	core_pwrdm = pwrdm_lookup("core_pwrdm");
+	per_pwrdm = pwrdm_lookup("l4per_pwrdm");
+
 
 
 #ifdef CONFIG_PM
@@ -1035,9 +1047,6 @@ static int __init omap4_pm_init(void)
 	suspend_set_ops(&omap_pm_ops);
 #endif /* CONFIG_SUSPEND */
 
-	cpu0_pwrdm = pwrdm_lookup("cpu0_pwrdm");
-	core_pwrdm = pwrdm_lookup("core_pwrdm");
-	per_pwrdm = pwrdm_lookup("l4per_pwrdm");
 	omap4_idle_init();
 	omap4_trigger_ioctrl();
 
