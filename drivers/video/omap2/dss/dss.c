@@ -176,7 +176,7 @@ void dss_mainclk_disable()
 		dss.mainclk_state = false;
 		pm_runtime_put_sync(&dss.pdev->dev);
 
-		if (cpu_is_omap44xx() || cpu_is_omap34xx())
+		if (cpu_is_omap44xx())
 			dss_opt_clock_disable();
 	}
 }
@@ -719,12 +719,9 @@ int dss_init(struct platform_device *pdev)
 	else
 		dss_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-	if (!dss_mem) {
-		WARN_ON(1);
-		r = -ENODEV;
-		goto fail0;
-	}
 
+	if(!dss_mem) return -ENOMEM;
+	
 	dss.base = ioremap(dss_mem->start, resource_size(dss_mem));
 	if (!dss.base) {
 		DSSERR("can't ioremap DSS\n");

@@ -398,7 +398,6 @@ struct overlay_cache_data {
 	u16 width;
 	u16 height;
 	enum omap_color_mode color_mode;
-	struct omap_dss_yuv2rgb_conv *yuv2rgb_conv;
 	u8 rotation;
 	enum omap_dss_rotation_type rotation_type;
 	bool mirror;
@@ -811,9 +810,6 @@ static int configure_overlay(enum omap_plane plane)
 			bpp = 8;
 			break;
 
-		case OMAP_DSS_COLOR_CLUT2:
-		case OMAP_DSS_COLOR_CLUT4:
-		case OMAP_DSS_COLOR_CLUT8:
 		case OMAP_DSS_COLOR_RGB16:
 		case OMAP_DSS_COLOR_ARGB16:
 		case OMAP_DSS_COLOR_YUV2:
@@ -892,7 +888,6 @@ static int configure_overlay(enum omap_plane plane)
 			w, h,
 			outw, outh,
 			c->color_mode,
-			c->yuv2rgb_conv,
 			c->ilace, x_decim, y_decim, three_tap,
 			c->rotation_type,
 			c->rotation,
@@ -1431,12 +1426,6 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 		oc->pic_height = ovl->info.pic_height;
 		oc->color_mode = ovl->info.color_mode;
 
-		if (ovl->info.yuv2rgb_conv.dirty) {
-			oc->yuv2rgb_conv = &ovl->info.yuv2rgb_conv;
-			ovl->info.yuv2rgb_conv.dirty = false;
-		} else
-			oc->yuv2rgb_conv = NULL;
-
 		oc->rotation = ovl->info.rotation;
 		oc->rotation_type = ovl->info.rotation_type;
 		oc->mirror = ovl->info.mirror;
@@ -1566,7 +1555,7 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 	}
 
 	r = 0;
-
+	dss_clk_enable(DSS_CLK_ICK | DSS_CLK_FCK1);
 	if (!dss_cache.irq_enabled) {
 		r = omap_dispc_register_isr(dss_apply_irq_handler, NULL,
 				DISPC_IRQ_VSYNC	| DISPC_IRQ_EVSYNC_ODD |
@@ -1669,12 +1658,6 @@ int omap_dss_wb_apply(struct omap_overlay_manager *mgr, struct omap_writeback *w
 		oc->max_x_decim = ovl->info.max_x_decim;
 		oc->min_y_decim = ovl->info.min_y_decim;
 		oc->max_y_decim = ovl->info.max_y_decim;
-
-		if (ovl->info.yuv2rgb_conv.dirty) {
-			oc->yuv2rgb_conv = &ovl->info.yuv2rgb_conv;
-			ovl->info.yuv2rgb_conv.dirty = false;
-		} else
-			oc->yuv2rgb_conv = NULL;
 
 		oc->replication =
 			dss_use_replication(dssdev, ovl->info.color_mode);

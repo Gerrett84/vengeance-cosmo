@@ -45,10 +45,6 @@
 #define OMAPFB_PLANE_XRES_MIN		8
 #define OMAPFB_PLANE_YRES_MIN		8
 
-#ifdef CONFIG_SGX540
-#define SGX_HW_ALIGN_PIXELS		8
-#endif
-
 static char *def_mode;
 static char *def_vram;
 static int def_vrfb;
@@ -228,27 +224,6 @@ static struct omapfb_colormode omapfb_colormodes[] = {
 		.dssmode = OMAP_DSS_COLOR_YUV2,
 		.bits_per_pixel = 16,
 		.nonstd = OMAPFB_COLOR_YUY422,
-	}, {
-		.dssmode = OMAP_DSS_COLOR_CLUT2,
-		.bits_per_pixel = 2,
-		.red    = { .length = 8, .offset = 0, .msb_right = 0 },
-		.green  = { .length = 8, .offset = 1, .msb_right = 0 },
-		.blue   = { .length = 8, .offset = 0, .msb_right = 0 },
-		.transp = { .length = 0, .offset = 0, .msb_right = 0 },
-	}, {
-		.dssmode = OMAP_DSS_COLOR_CLUT4,
-		.bits_per_pixel = 4,
-		.red    = { .length = 8, .offset = 2, .msb_right = 0 },
-		.green  = { .length = 8, .offset = 1, .msb_right = 0 },
-		.blue   = { .length = 0, .offset = 0, .msb_right = 0 },
-		.transp = { .length = 0, .offset = 0, .msb_right = 0 },
-	}, {
-		.dssmode = OMAP_DSS_COLOR_CLUT8,
-		.bits_per_pixel = 8,
-		.red    = { .length = 8, .offset = 4, .msb_right = 0 },
-		.green  = { .length = 8, .offset = 2, .msb_right = 0 },
-		.blue   = { .length = 8, .offset = 0, .msb_right = 0 },
-		.transp = { .length = 0, .offset = 6, .msb_right = 0 },
 	}, {
 		.dssmode = OMAP_DSS_COLOR_ARGB16,
 		.bits_per_pixel = 16,
@@ -661,12 +636,8 @@ void set_fb_fix(struct fb_info *fbi)
 
 		fix->smem_len = var->yres_virtual * fix->line_length;
 	} else if (ofbi->rotation_type != OMAP_DSS_ROT_TILER) {
-		int aligned_width = var->xres_virtual;
-#ifdef CONFIG_SGX540
-		aligned_width = ALIGN(aligned_width, SGX_HW_ALIGN_PIXELS);
-#endif
 		fix->line_length =
-			(aligned_width * var->bits_per_pixel) >> 3;
+			(var->xres_virtual * var->bits_per_pixel) >> 3;
 
 		/* tiler line length is set during allocation, and cannot
 		   be changed */
@@ -748,6 +719,12 @@ int check_fb_var(struct fb_info *fbi, struct fb_var_screeninfo *var)
 			var->xres, var->yres,
 			var->xres_virtual, var->yres_virtual);
 
+	
+	if(display == NULL) {
+		return -EINVAL;
+	}
+
+	
 	if (display && display->driver->get_dimension) {
 		display->driver->get_dimension(display, &var->width, &var->height);
 	} else {
@@ -944,11 +921,7 @@ int omapfb_setup_overlay(struct fb_info *fbi, struct omap_overlay *ovl,
 			break;
 		}
 	default:
-		if (var->bits_per_pixel >> 3)
-			screen_width = fix->line_length
-					/ (var->bits_per_pixel >> 3);
-		else
-			screen_width = fix->line_length;
+		screen_width = fix->line_length / (var->bits_per_pixel >> 3);
 		break;
 	}
 
@@ -1829,11 +1802,7 @@ int omapfb_realloc_fbmem(struct fb_info *fbi, unsigned long size, int type)
 	unsigned int w, h, bytespp;
 	w = var->xres;
 	h = var->yres;
-
-	if (var->bits_per_pixel >> 0x3)
-		bytespp = var->bits_per_pixel >> 0x3;
-	else
-		bytespp = 1;
+	bytespp = var->bits_per_pixel >> 0x3;
 
 	if (type > OMAPFB_MEMTYPE_MAX)
 		return -EINVAL;

@@ -77,10 +77,7 @@ static ssize_t overlay_manager_store(struct omap_overlay *ovl, const char *buf,
 	if (len > 0) {
 		for (i = 0; i < omap_dss_get_num_overlay_managers(); ++i) {
 			mgr = omap_dss_get_overlay_manager(i);
-			if (!mgr) {
-				WARN_ON(1);
-				continue;
-			}
+
 			if (strncmp(buf, mgr->name, len) == 0)
 				break;
 
@@ -99,9 +96,12 @@ static ssize_t overlay_manager_store(struct omap_overlay *ovl, const char *buf,
 
 	if (mgr && sysfs_streq(mgr->name, "tv")) {
 		ovl->get_overlay_info(ovl, &info);
+		
 		if (mgr->device->panel.timings.x_res < info.out_width ||
 			mgr->device->panel.timings.y_res < info.out_height) {
-			printk(KERN_ERR"output window size exceeds panel dimensions");
+		
+			printk(KERN_ERR"TV does not support downscaling"
+			"Please configure overlay to supported format");
 			return -EINVAL;
 		}
 	}
@@ -971,12 +971,19 @@ static int omap_dss_set_manager(struct omap_overlay *ovl,
 	ovl->manager = mgr;
 
 	/* do not set channel out if DSS is off */
-	if (!dss_get_mainclk_state()) {
-		DSSERR("DSS clock not active, setting ovl manager failed\n");
-		return -EIO;
-	}
+	if (!dss_get_mainclk_state())
+		return 0;
 
+	dss_clk_enable(DSS_CLK_ICK | DSS_CLK_FCK1);
+	/* XXX: on manual update display, in auto update mode, a bug happens
+	 * here. When an overlay is first enabled on LCD, then it's disabled,
+	 * and the manager is changed to TV, we sometimes get SYNC_LOST_DIGIT
+	 * errors. Waiting before changing the channel_out fixes it. I'm
+	 * guessing that the overlay is still somehow being used for the LCD,
+	 * but I don't understand how or why. */
+	msleep(40);
 	dispc_set_channel_out(ovl->id, mgr->id);
+	dss_clk_disable(DSS_CLK_ICK | DSS_CLK_FCK1);
 
 	return 0;
 }
@@ -1077,7 +1084,7 @@ void dss_init_overlays(struct platform_device *pdev)
 				OMAP_DSS_COLOR_GFX_OMAP2;
 			ovl->caps = OMAP_DSS_OVL_CAP_DISPC;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_3;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_0;
 			break;
 		case 1:
 			ovl->name = "vid1";
@@ -1088,11 +1095,8 @@ void dss_init_overlays(struct platform_device *pdev)
 				OMAP_DSS_COLOR_VID_OMAP2;
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
-			ovl->info.yuv2rgb_conv.type =
-				OMAP_DSS_COLOR_CONV_BT601_5_LR;
-			ovl->info.yuv2rgb_conv.dirty = true;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_2;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_3;
 			break;
 		case 2:
 			ovl->name = "vid2";
@@ -1103,11 +1107,8 @@ void dss_init_overlays(struct platform_device *pdev)
 				OMAP_DSS_COLOR_VID_OMAP2;
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
-			ovl->info.yuv2rgb_conv.type =
-				OMAP_DSS_COLOR_CONV_BT601_5_LR;
-			ovl->info.yuv2rgb_conv.dirty = true;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_1;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_2;
 			break;
 		case 3:
 			ovl->name = "vid3";
@@ -1115,11 +1116,8 @@ void dss_init_overlays(struct platform_device *pdev)
 			ovl->supported_modes = OMAP_DSS_COLOR_VID3_OMAP3;
 			ovl->caps = OMAP_DSS_OVL_CAP_SCALE |
 				OMAP_DSS_OVL_CAP_DISPC;
-			ovl->info.yuv2rgb_conv.type =
-				OMAP_DSS_COLOR_CONV_BT601_5_LR;
-			ovl->info.yuv2rgb_conv.dirty = true;
 			ovl->info.global_alpha = 255;
-			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_0;
+			ovl->info.zorder = OMAP_DSS_OVL_ZORDER_1;
 			break;
 
 		}

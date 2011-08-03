@@ -273,13 +273,14 @@ static int v4l2_rot_to_dss_rot(const unsigned int v4l2_rotation,
 {
 	switch (v4l2_rotation) {
 	case 90:
+		//*rotation = OMAP_DSS_ROT_270;
 		*rotation = OMAP_DSS_ROT_90;
 		break;
 	case 180:
 		*rotation = OMAP_DSS_ROT_180;
 		break;
 	case 270:
-		*rotation = OMAP_DSS_ROT_270;
+		*rotation = OMAP_DSS_ROT_90;
 		break;
 	case 0:
 		*rotation = OMAP_DSS_ROT_0;
@@ -676,8 +677,10 @@ static int change_display(struct s3d_ovl_device *dev,
 		return -EINVAL;
 	}
 
-	if (dev->cur_disp == display)
-		return 0;
+	if (dev->streaming) {
+		S3DERR("cannot change display while streaming!\n");
+		return -EBUSY;
+	}
 
 	mgr = display->manager;
 	if (!mgr) {
@@ -698,9 +701,7 @@ static int change_display(struct s3d_ovl_device *dev,
 	}
 
 	if (mgr->device != display) {
-		omapdss_display_disable(display);
 		if (mgr->device) {
-			omapdss_display_disable(mgr->device);
 			r = mgr->unset_device(mgr);
 			if (r || mgr->device) {
 				S3DERR("failed to unbind display from manager\n");
@@ -752,14 +753,13 @@ static inline int bind_ovl2display(struct s3d_ovl_device *dev,
 		return r;
 	}
 
-	if (mgr) {
-		r = ovl->dssovl->unset_manager(ovl->dssovl);
-		if (r) {
-			S3DERR("couldn't unbind manager from ovl\n");
-			return r;
-		}
+	r = ovl->dssovl->unset_manager(ovl->dssovl);
+	if (r && mgr != NULL) {
+		S3DERR("couldn't unbind manager from ovl\n");
+		return r;
 	}
-
+	if (mgr)
+		mgr->apply(mgr);
 	r = ovl->dssovl->set_manager(ovl->dssovl, display->manager);
 	if (r) {
 		S3DERR("couldn't bind to manager\n");
@@ -949,12 +949,7 @@ static int fill_dst(struct s3d_ovl_device *dev,
 			unsigned int dst_width,
 			unsigned int dst_height)
 {
-	unsigned int pos_x = dev->win.w.left, pos_y = dev->win.w.top;
-
-	info->r_pos_x = pos_x;
-	info->r_pos_y = pos_y;
-	info->l_pos_x = pos_x;
-	info->l_pos_y = pos_y;
+	unsigned int pos_x = 0, pos_y = 0;
 
 	switch (disp_info->type) {
 	case S3D_DISP_NONE:
@@ -981,14 +976,14 @@ static int fill_dst(struct s3d_ovl_device *dev,
 	case S3D_DISP_OVERUNDER:
 		info->dst_w = dst_width;
 		info->dst_h = (dst_height - disp_info->gap) / 2;
-		pos_y += (dst_height + disp_info->gap) / 2;
+		pos_y = (dst_height + disp_info->gap) / 2;
 		info->disp_ovls = 2;
 		info->a_view_per_ovl = true;
 		break;
 	case S3D_DISP_SIDEBYSIDE:
 		info->dst_w = (dst_width - disp_info->gap) / 2;
 		info->dst_h = dst_height;
-		pos_x += (dst_width + disp_info->gap) / 2;
+		pos_x = (dst_width + disp_info->gap) / 2;
 		info->disp_ovls = 2;
 		info->a_view_per_ovl = true;
 		break;
@@ -1045,10 +1040,6 @@ static int fill_formatter_config(struct s3d_ovl_device *dev,
 	info->disp_h = dst_height;
 	info->in_rotation = dev->rotation;
 	info->out_rotation = 0;
-	info->r_pos_x = dev->win.w.left;
-	info->r_pos_y = dev->win.w.top;
-	info->l_pos_x = dev->win.w.left;
-	info->l_pos_y = dev->win.w.top;
 
 	/*If the input matches what the display expects just feed it, no
 	 * special processing is needed */
@@ -1243,8 +1234,6 @@ static int init_overlay(struct s3d_ovl_device *dev, struct s3d_overlay *ovl)
 		ovl->src.h = dev->fter_config.disp_h;
 		ovl->dst.w = ovl->src.w;
 		ovl->dst.h = ovl->src.h;
-		ovl->dst.x = dev->fter_config.r_pos_x;
-		ovl->dst.y = dev->fter_config.r_pos_y;
 		ovl->state = OVL_ST_FETCH_ALL;
 	}
 
@@ -1829,10 +1818,6 @@ static void s3d_overlay_isr(void *arg, u32 irqstatus)
 	unsigned long flags;
 
 	if (!dev->streaming)
-		return;
-
-	/* Filter erroneous VSYNC handling */
-	if (!dssdev_manually_updated(dev->cur_disp) && dispc_is_vsync_fake())
 		return;
 
 	spin_lock_irqsave(&dev->vbq_lock, flags);
@@ -2842,8 +2827,6 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 			int r;
 			if (dev->streaming)
 				return -EBUSY;
-			if (dev->cur_disp_idx == a->value)
-				return 0;
 			mutex_lock(&dev->lock);
 			r = change_display(dev, get_display(a->value));
 			if (!r)
@@ -2990,7 +2973,7 @@ static int vidioc_streamon(struct file *file, void *fh, enum v4l2_buf_type i)
 
 	/*TODO: if the panel resolution changes after going to 3D
 	   what to do we do with the current window setting*/
-	/* set_default_window(dev, &dev->win); */
+	//set_default_window(dev, &dev->win); 
 
 	r = allocate_resources(dev);
 	if (r) {

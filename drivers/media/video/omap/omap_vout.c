@@ -304,21 +304,9 @@ static int omap_vout_allocate_vrfb_buffers(struct omap_vout_device *vout,
 int omap_vout_try_format(struct v4l2_pix_format *pix)
 {
 	int ifmt, bpp = 0;
-	int img_size = pix->height * pix->width;
 
-	if (img_size <= VID_MAX_HEIGHT * VID_MAX_WIDTH) {
-		if (cpu_is_omap34xx())
-			pix->height = clamp(pix->height,
-				(u32)VID_MIN_HEIGHT,
-				(u32)VID_MAX_WIDTH);
-		else
-			pix->height = clamp(pix->height,
-				(u32)VID_MIN_HEIGHT,
-				(u32)VID_MAX_HEIGHT);
-	} else {
-		pix->height = clamp(pix->height, (u32)VID_MIN_HEIGHT,
-			(u32)VID_MAX_HEIGHT);
-	}
+	pix->height = clamp(pix->height, (u32)VID_MIN_HEIGHT,
+						(u32)VID_MAX_HEIGHT);
 	pix->width = clamp(pix->width, (u32)VID_MIN_WIDTH, (u32)VID_MAX_WIDTH);
 
 	for (ifmt = 0; ifmt < NUM_OUTPUT_FORMATS; ifmt++) {
@@ -481,59 +469,6 @@ static inline int calc_rotation(const struct omap_vout_device *vout)
 	return vout->rotation;
 #endif
 	return dss_rotation_180_degree;
-}
-
-/*
- * Swap the overlay parameters in case of rotation is 90 or 270
- */
-static void calc_overlay_window_params(struct omap_vout_device *vout,
-				       struct omap_overlay_info *info)
-{
-	__s32	temp;
-	struct omap_overlay *ovl;
-	struct omapvideo_info *ovid;
-	struct omap_video_timings *timing;
-	struct v4l2_window *win;
-
-	ovid = &vout->vid_info;
-	ovl = ovid->overlays[0];
-	win = &vout->win;
-
-	timing = &ovl->manager->device->panel.timings;
-	switch (vout->rotation) {
-	case dss_rotation_90_degree:
-	/* Invert the height and width for 90  and 270 degree rotation */
-		temp = info->out_width;
-		info->out_width = info->out_height;
-		info->out_height = temp;
-#ifndef CONFIG_ARCH_OMAP4
-		info->pos_y = (timing->y_res - win->w.width) - win->w.left;
-		info->pos_x = win->w.top;
-#endif
-		break;
-
-	case dss_rotation_180_degree:
-#ifndef CONFIG_ARCH_OMAP4
-		info->pos_x = (timing->x_res - win->w.width) - win->w.left;
-		info->pos_y = (timing->y_res - win->w.height) - win->w.top;
-#endif
-		break;
-
-	case dss_rotation_270_degree:
-		temp = info->out_width;
-		info->out_width = info->out_height;
-		info->out_height = temp;
-#ifndef CONFIG_ARCH_OMAP4
-		info->pos_y = win->w.left;
-		info->pos_x = (timing->x_res - win->w.height) - win->w.top;
-#endif
-		break;
-
-	default:
-		info->pos_x = win->w.left;
-		info->pos_y = win->w.top;
-		break;
-		}
 }
 
 /*
@@ -1002,12 +937,6 @@ int omapvid_setup_overlay(struct omap_vout_device *vout,
 	info.pos_y = posy;
 	info.out_width = outw;
 	info.out_height = outh;
-
-	/*Recalculate the overlay window parameters in rotation scenario
-	* This is required to meet DSS driver window requirements
-	*/
-	calc_overlay_window_params(vout, &info);
-
 	info.global_alpha =
 		vout->vid_info.overlays[0]->info.global_alpha;
 	if (!cpu_is_omap44xx()) {
@@ -1058,7 +987,8 @@ int omapvid_init(struct omap_vout_device *vout, u32 addr, u32 uv_addr)
 	int ret = 0, i;
 	struct v4l2_window *win;
 	struct omap_overlay *ovl;
-	int posx, posy, outw, outh;
+	int posx, posy, outw, outh, temp;
+	struct omap_video_timings *timing;
 	struct omapvideo_info *ovid = &vout->vid_info;
 
 	win = &vout->win;
@@ -1066,6 +996,8 @@ int omapvid_init(struct omap_vout_device *vout, u32 addr, u32 uv_addr)
 		ovl = ovid->overlays[i];
 		if (!ovl->manager || !ovl->manager->device)
 			return -EINVAL;
+
+		timing = &ovl->manager->device->panel.timings;
 
 		outw = win->w.width;
 		outh = win->w.height;
@@ -1171,6 +1103,25 @@ static int interlace_display(struct omap_vout_device *vout, u32 irqstatus,
 	return vout->field_id;
 }
 
+#ifdef CONFIG_OMAP2_DSS_HDMI
+/* This returns the the infromation of level of completion of display of
+	the complete frame */
+static int i_to_p_base_address_change(struct omap_vout_device *vout)
+{
+	struct omap_overlay *ovl;
+	struct omapvideo_info *ovid;
+	ovid = &(vout->vid_info);
+	ovl = ovid->overlays[0];
+
+	if (vout->field_id == 0) {
+		change_base_address(ovl->id, ovl->info.p_uv_addr);
+		dispc_go(ovl->manager->device->channel);
+	}
+	vout->field_id ^= 1;
+	return vout->field_id;
+}
+#endif
+
 static int omapvid_process_frame(struct omap_vout_device *vout)
 {
 	u32 addr, uv_addr;
@@ -1208,7 +1159,10 @@ static int omapvid_process_frame(struct omap_vout_device *vout)
 			printk(KERN_ERR VOUT_NAME
 				"failed to change mode\n");
 	}
-
+#ifdef CONFIG_PANEL_PICO_DLP
+	if (sysfs_streq(cur_display->name, "pico_DLP"))
+		dispc_go(OMAP_DSS_CHANNEL_LCD2);
+#endif
 	return ret;
 }
 
@@ -1236,8 +1190,8 @@ static void omapvid_process_frame_work(struct work_struct *work)
 	mutex_lock(&vout->lock);
 	if (!w->process || !next_frame(vout))
 		omapvid_process_frame(w->vout);
-	w->queued = false;
 	mutex_unlock(&vout->lock);
+	kfree(w);
 }
 
 void omap_vout_isr(void *arg, unsigned int irqstatus)
@@ -1247,7 +1201,7 @@ void omap_vout_isr(void *arg, unsigned int irqstatus)
 	struct omapvideo_info *ovid;
 	struct omap_dss_device *cur_display;
 	struct omap_vout_device *vout = (struct omap_vout_device *)arg;
-	struct omap_vout_work *w = vout->work;
+	struct omap_vout_work *w;
 	int process = false;
 	unsigned long flags;
 	int irq = 0;
@@ -1298,15 +1252,20 @@ void omap_vout_isr(void *arg, unsigned int irqstatus)
 		    !(ovl->info.field & OMAP_FLAG_IDEV) &&
 		    (irq == DISPC_IRQ_FRAMEDONE ||
 		     irq == DISPC_IRQ_FRAMEDONE2)) {
-			 /* In this case, the upper half of the frame would be
+			 /* in this case, the upper halg of the frame would be
 			  * rendered and the lower one would be ignored.
 			  */
 		}
 		break;
 	case OMAP_DISPLAY_TYPE_DPI:
-		if (!(irqstatus & (DISPC_IRQ_VSYNC | DISPC_IRQ_VSYNC2)) ||
-			dispc_is_vsync_fake())
+		if (!(irqstatus & (DISPC_IRQ_VSYNC | DISPC_IRQ_VSYNC2)))
 			goto vout_isr_err;
+#ifdef CONFIG_PANEL_PICO_DLP
+		if (dispc_go_busy(OMAP_DSS_CHANNEL_LCD2)) {
+			printk(KERN_INFO "dpi busy %d\n", cur_display->type);
+			goto vout_isr_err;
+		}
+#endif
 		break;
 #ifdef CONFIG_OMAP2_DSS_HDMI
 	case OMAP_DISPLAY_TYPE_HDMI:
@@ -1317,11 +1276,8 @@ void omap_vout_isr(void *arg, unsigned int irqstatus)
 				goto vout_isr_err;
 		} else if (ovl->info.field & OMAP_FLAG_IBUF) {
 			if (irqstatus & DISPC_IRQ_EVSYNC_EVEN) {
-				/* In this case, the upper half of the frame
-				 * would be rendered and the lower one would
-				 * be ignored.
-				 */
-				break;
+				if (i_to_p_base_address_change(vout))
+					goto vout_isr_err;
 			}
 		} else {
 			if (!(irqstatus & DISPC_IRQ_EVSYNC_EVEN))
@@ -1347,21 +1303,15 @@ intlace:
 	/* if any manager is in manual update mode, we must schedule work */
 	if (manually_updated(vout)) {
 		/* queue process frame */
-
+		w = kzalloc(sizeof(*w), GFP_ATOMIC);
 		if (w) {
-			if (!w->queued) {
-				w->vout = vout;
-				w->process = process;
-				w->queued = true;
-				INIT_WORK(&w->work, omapvid_process_frame_work);
-				queue_work(vout->workqueue, &w->work);
-			} else
-				printk(KERN_ERR "<%s> work already Queued. "
-						"skip processing the frame ="
-						" %d\n",
-				       __func__, w->queued);
-		} else
-			printk(KERN_ERR "Failed to get allocate work struct\n");
+			w->vout = vout;
+			w->process = process;
+			INIT_WORK(&w->work, omapvid_process_frame_work);
+			queue_work(vout->workqueue, &w->work);
+		} else {
+			printk(KERN_WARNING "Failed to create process_frame_work\n");
+		}
 	} else {
 		/* process frame here for auto update screens */
 		if (process && next_frame(vout))
@@ -1514,6 +1464,8 @@ static u32 omap_tiler_virt_to_phys(void *ptr)
 	pgd_t *pgd = NULL;
 	pmd_t *pmd = NULL;
 	pte_t *ptep = NULL, pte = 0x0;
+	s32 r = -1;
+	u32 til_addr = 0x0;
 	u32 arg = (u32)ptr;
 
 	pgd = pgd_offset(current->mm, arg);
@@ -1529,8 +1481,6 @@ static u32 omap_tiler_virt_to_phys(void *ptr)
 			}
 		}
 	}
-
-	return 0;
 }
 
 /*
@@ -1555,7 +1505,7 @@ static int omap_vout_buffer_prepare(struct videobuf_queue *q,
 	dma_addr_t dmabuf;
 #endif
 	struct omap_vout_device *vout = q->priv_data;
-#if defined(CONFIG_PM) && !defined(CONFIG_ARCH_OMAP4)
+#ifdef CONFIG_PM
 	struct vout_platform_data *pdata =
 			(((vout->vid_dev)->v4l2_dev).dev)->platform_data;
 #endif
@@ -2307,15 +2257,6 @@ static int vidioc_s_fmt_vid_overlay(struct file *file, void *fh,
 			info.out_width = vout->win.w.width;
 			info.out_height = vout->win.w.height;
 
-			if (cpu_is_omap44xx())
-				info.zorder = vout->win.zorder;
-
-			/* Recalculate the overlay window parameters in rotation
-			 * scenario. This is required to meet DSS driver
-			 * window requirements
-			 */
-			calc_overlay_window_params(vout, &info);
-
 			if (ovl->set_overlay_info(ovl, &info))
 				return -EINVAL;
 		}
@@ -2686,7 +2627,6 @@ static int vidioc_reqbufs(struct file *file, void *fh,
 		dmabuf->sglen = 1;
 	}
 #endif
-
 reqbuf_err:
 	mutex_unlock(&vout->lock);
 	return ret;
@@ -3186,7 +3126,6 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 	mutex_init(&vout->lock);
 
 	vfd->minor = -1;
-
 	return 0;
 
 }
@@ -3356,19 +3295,13 @@ static int __init omap_vout_create_video_devices(struct platform_device *pdev)
 			ret = -ENOMEM;
 			goto error;
 		}
-		vout->work = kzalloc(sizeof(struct omap_vout_work), GFP_KERNEL);
-		if (vout->work == NULL) {
-			ret = -ENOMEM;
-			goto error_q;
-		}
-		vout->work->queued = false;
 
 #endif
 		/* Setup the default configuration for the video devices
 		 */
 		if (omap_vout_setup_video_data(vout) != 0) {
 			ret = -ENOMEM;
-			goto error;
+			goto error_q;
 		}
 
 		/* Allocate default number of buffers for the video streaming
@@ -3403,7 +3336,6 @@ error2:
 		omap_vout_free_buffers(vout);
 error1:
 		video_device_release(vfd);
-		kfree(vout->work);
 error_q:
 #ifndef CONFIG_FB_OMAP2_FORCE_AUTO_UPDATE
 		destroy_workqueue(vout->workqueue);
@@ -3463,7 +3395,6 @@ static void omap_vout_cleanup_device(struct omap_vout_device *vout)
 #ifndef CONFIG_FB_OMAP2_FORCE_AUTO_UPDATE
 	flush_workqueue(vout->workqueue);
 	destroy_workqueue(vout->workqueue);
-	kfree(vout->work);
 #endif
 	kfree(vout);
 }

@@ -459,6 +459,13 @@ struct omap_video_timings {
 	u16 vsa;
 };
 
+struct omap_color_conv_coef {
+	int  ry,  rcr,  rcb;
+	int  gy,  gcr,  gcb;
+	int  by,  bcr,  bcb;
+	int  full_range;
+};
+
 /* Weight coef are set as value * 1000 (if coef = 1 it is set to 1000) */
 struct omap_dss_color_weight_coef {
 	int rr, rg, rb;
@@ -942,7 +949,6 @@ void omapdss_default_get_resolution(struct omap_dss_device *dssdev,
 int omapdss_default_get_recommended_bpp(struct omap_dss_device *dssdev);
 bool dispc_go_busy(enum omap_channel channel);
 void dispc_go(enum omap_channel channel);
-bool dispc_is_vsync_fake(void);
 typedef void (*omap_dispc_isr_t) (void *arg, u32 mask);
 int omap_dispc_register_isr(omap_dispc_isr_t isr, void *arg, u32 mask);
 int omap_dispc_unregister_isr(omap_dispc_isr_t isr, void *arg, u32 mask);
@@ -953,6 +959,9 @@ void dispc_go(enum omap_channel channel);
 int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout);
 int omap_dispc_wait_for_irq_interruptible_timeout(u32 irqmask,
 			unsigned long timeout);
+void dispc_get_default_color_conv_coef(struct omap_color_conv_coef *ct);
+void dispc_set_color_conv_coef(enum omap_plane plane,
+		const struct omap_color_conv_coef *ct);
 
 #define to_dss_driver(x) container_of((x), struct omap_dss_driver, driver)
 #define to_dss_device(x) container_of((x), struct omap_dss_device, dev)

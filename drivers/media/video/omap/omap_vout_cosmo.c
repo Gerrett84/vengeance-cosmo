@@ -223,7 +223,7 @@ const static struct v4l2_fmtdesc omap_formats[] = {
 
 #define NUM_OUTPUT_FORMATS (ARRAY_SIZE(omap_formats))
 
-//#define DEBUG
+#define DEBUG
 #ifdef DEBUG
 	#define DBG_PRINTK	printk
 	#define	INFO_PRINTK printk
@@ -3062,6 +3062,9 @@ static int vidioc_queryctrl(struct file *file, void *fh,
 	case V4L2_CID_ROTATE:
 		ret = v4l2_ctrl_query_fill(ctrl, 0, 270, 90, 0);
 		break;
+	case V4L2_CID_VFLIP:
+		ret = v4l2_ctrl_query_fill(ctrl, 0, 1, 1, 0);
+		break;
 	case V4L2_CID_TI_DISPC_OVERLAY:
 		/* not settable for now */
 		//only lcd
@@ -3087,6 +3090,9 @@ static int vidioc_g_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 	case V4L2_CID_ROTATE:
 		dss_rot_to_v4l2_rot( vout->display_info.lcd.rotation, &ctrl->value);
 		break;
+        case V4L2_CID_VFLIP:
+                ctrl->value = 0;
+                break;
 	case V4L2_CID_TI_DISPC_OVERLAY:
 		ctrl->value = vout->vid_info.overlays.named.lcd->id;
 		break;
@@ -3145,6 +3151,8 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 
 		break;
 	}
+        case V4L2_CID_VFLIP:
+                break;
 	case ( V4L2_CID_PRIVATE_BASE + 'H'*0x100 + 'e' ) :	//HDMI enable flag
 		mutex_lock(&vout->lock);
 		if ( vout->display_info.hdmi.enable && !a->value && vout->streaming_status==E_STREAMING_ON_GOING )
