@@ -72,26 +72,9 @@ static irqreturn_t twl6040_vib_irq_handler(int irq, void *data)
 static void vib_set(int on)
 {
 	struct twl6040_codec *twl6040 = misc_data->twl6040;
-	u8 lppllctl = 0, hppllctl = 0;
 	u8 reg = 0;
 
 	if (on) {
-		/* Sequence to enable HPPLL for Vibra
-		 * TODO: This should be in TWL6040 MFD driver to
-		 *	 ensure syncronization between audio and vibra
-		 *	 components.
-		 */
-		lppllctl = TWL6040_LPLLENA;
-		twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL, lppllctl);
-		mdelay(5);
-		lppllctl &= ~TWL6040_HPLLSEL;
-		twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL, lppllctl);
-		hppllctl = twl6040_reg_read(twl6040, TWL6040_REG_HPPLLCTL);
-		hppllctl &= ~TWL6040_HPLLENA;
-		twl6040_reg_write(twl6040, TWL6040_REG_HPPLLCTL, hppllctl);
-		lppllctl &= ~TWL6040_LPLLFIN;
-		twl6040_reg_write(twl6040, TWL6040_REG_LPPLLCTL, lppllctl);
-
 		reg = twl6040_reg_read(twl6040, TWL6040_REG_VIBCTLL);
 		twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLL,
 				  reg | TWL6040_VIBENAL | TWL6040_VIBCTRLLP);
@@ -100,8 +83,6 @@ static void vib_set(int on)
 		twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLR,
 				  reg | TWL6040_VIBENAR | TWL6040_VIBCTRLRN);
 
-		twl6040_reg_write(twl6040, TWL6040_REG_VIBDATL, 0x32);
-		twl6040_reg_write(twl6040, TWL6040_REG_VIBDATR, 0x32);
 	} else {
 		reg = twl6040_reg_read(twl6040, TWL6040_REG_VIBCTLL)
 			& ~TWL6040_VIBENAL;
@@ -150,6 +131,9 @@ static void vib_enable(struct timed_output_dev *dev, int value)
 		return;
 	}
 
+	twl6040_reg_write(data->twl6040, TWL6040_REG_VIBDATL, 0x32);
+	twl6040_reg_write(data->twl6040, TWL6040_REG_VIBDATR, 0x32);
+
 	spin_lock_irqsave(&data->lock, flags);
 	hrtimer_cancel(&data->timer);
 
@@ -177,6 +161,34 @@ void vibrator_haptic_fire(int value)
 {
 	vib_enable(&misc_data->dev, value);
 }
+
+#if CONFIG_PM
+static int vib_suspend(struct device *dev)
+{
+	struct vib_data *data = dev_get_drvdata(dev);
+
+	twl6040_disable(data->twl6040);
+
+	return 0;
+}
+
+static int vib_resume(struct device *dev)
+{
+	struct vib_data *data = dev_get_drvdata(dev);
+
+	twl6040_enable(data->twl6040);
+
+	return 0;
+}
+#else
+#define vib_suspend NULL
+#define vib_resume  NULL
+#endif
+
+static const struct dev_pm_ops vib_pm_ops = {
+	.suspend = vib_suspend,
+	.resume = vib_resume,
+};
 
 static int vib_probe(struct platform_device *pdev)
 {
@@ -236,7 +248,6 @@ static int vib_probe(struct platform_device *pdev)
 err2:
 	timed_output_dev_unregister(&data->dev);
 err1:
-	kfree(data->pdata);
 	kfree(data);
 err0:
 	return ret;
@@ -252,7 +263,6 @@ static int vib_remove(struct platform_device *pdev)
 	twl6040_disable(data->twl6040);
 	twl6040_free_irq(data->twl6040, TWL6040_IRQ_VIB, data);
 	timed_output_dev_unregister(&data->dev);
-	kfree(data->pdata);
 	kfree(data);
 
 	return 0;
@@ -265,6 +275,7 @@ static struct platform_driver twl6040_vib_driver = {
 	.driver = {
 		   .name = VIB_NAME,
 		   .owner = THIS_MODULE,
+		   .pm = &vib_pm_ops,
 	},
 };
 
