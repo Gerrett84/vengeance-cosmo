@@ -195,7 +195,7 @@ obj-$(CONFIG_MACH_OMAP4_PANDA)		+= board-omap4panda.o \
 					   hsmmc.o
 obj-$(CONFIG_MACH_LGE_COSMOPOLITAN)	+= board-cosmopolitan.o \
 					   board-connectivity.o \
-					   hsmmc.o wakelock_check.o cdc_tcxo.o
+					   hsmmc.o wakelock_check.o
 obj-$(CONFIG_TIWLAN_SDIO)               += board-4430sdp-wifi.o
 
 obj-$(CONFIG_MACH_LGE_COSMOPOLITAN)	+= cosmo_gps.o

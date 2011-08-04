@@ -264,6 +264,7 @@ config MACH_LGE_COSMOPOLITAN
 	select POWER_SUPPLY
 	select TWL6030_BCI_BATTERY
 	select SECURITY_MIDDLEWARE_COMPONENT
+	select CDC_TCXO
 
 choice
 	prompt "Choose the LGE COSMOPOLITAN Board Revision"
