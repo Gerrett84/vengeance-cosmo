@@ -751,9 +751,6 @@ static void omap4_audio_conf(void)
 
 static struct twl4030_codec_audio_data twl6040_audio = {
 	.audio_mclk	= 38400000,
-	.audpwron_gpio  = 127,
-	.naudint_irq    = OMAP44XX_IRQ_SYS_2N,
-
 #if defined(CONFIG_MACH_LGE_COSMO_REV_A)
 	.hsjack_gpio	= EAR_SENSE_GPIO,
 	.hsjack_irq		= OMAP_GPIO_IRQ(EAR_SENSE_GPIO),
@@ -771,6 +768,9 @@ static struct twl4030_codec_data twl6040_codec = {
 	.audio_mclk	= 38400000,
 	.audio = &twl6040_audio,
 	.vibra = &twl6040_vibra,
+	.audpwron_gpio  = 127,
+	.naudint_irq    = OMAP44XX_IRQ_SYS_2N,
+        .irq_base       = TWL6040_CODEC_IRQ_BASE,
 };
 
 static struct twl4030_platform_data sdp4430_twldata = {

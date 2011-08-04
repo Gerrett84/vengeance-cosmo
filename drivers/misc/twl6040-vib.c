@@ -42,7 +42,7 @@ struct vib_data {
 	int vib_state;
 };
 
-struct vib_data *misc_data;
+static struct vib_data *misc_data;
 
 static void vib_set(int on)
 {
