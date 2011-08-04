@@ -223,7 +223,6 @@ const static struct v4l2_fmtdesc omap_formats[] = {
 
 #define NUM_OUTPUT_FORMATS (ARRAY_SIZE(omap_formats))
 
-#define DEBUG
 #ifdef DEBUG
 	#define DBG_PRINTK	printk
 	#define	INFO_PRINTK printk
@@ -512,6 +511,61 @@ static bool is_supported_rotation_for_3d(u8 rotation)
 	else
 		return false;
 }
+
+
+ /*
+  * Swap the overlay parameters in case of rotation is 90 or 270
+  */
+static void calc_overlay_window_params(struct omap_vout_device *vout,
+                                      struct omap_overlay_info *info)
+{
+       __s32   temp;
+       struct omap_overlay *ovl;
+       struct omapvideo_info *ovid;
+       struct omap_video_timings *timing;
+       struct v4l2_window *win;
+
+       ovid = &vout->vid_info;
+       ovl = ovid->overlays.named.lcd;
+       win = &vout->display_info.lcd.win;
+
+       timing = &ovl->manager->device->panel.timings;
+       switch (vout->display_info.lcd.rotation) {
+       case dss_rotation_90_degree:
+       /* Invert the height and width for 90  and 270 degree rotation */
+               temp = info->out_width;
+               info->out_width = info->out_height;
+               info->out_height = temp;
+#ifndef CONFIG_ARCH_OMAP4
+               info->pos_y = (timing->y_res - win->w.width) - win->w.left;
+               info->pos_x = win->w.top;
+#endif
+               break;
+
+       case dss_rotation_180_degree:
+#ifndef CONFIG_ARCH_OMAP4
+               info->pos_x = (timing->x_res - win->w.width) - win->w.left;
+               info->pos_y = (timing->y_res - win->w.height) - win->w.top;
+#endif
+               break;
+
+       case dss_rotation_270_degree:
+               temp = info->out_width;
+               info->out_width = info->out_height;
+               info->out_height = temp;
+#ifndef CONFIG_ARCH_OMAP4
+               info->pos_y = win->w.left;
+               info->pos_x = (timing->x_res - win->w.height) - win->w.top;
+#endif
+               break;
+
+       default:
+               info->pos_x = win->w.left;
+               info->pos_y = win->w.top;
+               break;
+               }
+}
+
 
 /*
  * Convert V4L2 pixel format to DSS pixel format
@@ -1026,6 +1080,8 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 {
 	struct omap_vout_frame_info *fInfo;
 	struct omap_overlay_info ovlInfo;
+        struct omap_vout_device *vout;
+
 	if ( ovl==NULL || frame==NULL )
 	{
 		WARN(1, "Invalid paramter (%p, %p)\n,", ovl, frame);
@@ -1104,6 +1160,8 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 		return -EINVAL;
 	}	
 
+        vout = fInfo->vout;
+        calc_overlay_window_params(vout, &ovlInfo);
 	//set overlay
 	if ( ovl->set_overlay_info(ovl, &ovlInfo) )
 	{
@@ -2876,6 +2934,15 @@ static int vidioc_try_fmt_vid_overlay(struct file *file, void *fh,
 	return ret;
 }
 
+/*
+ * Return true if rotation is 90 or 270
+ */
+static inline int rotate_90_or_270(const struct omap_vout_device *vout)
+{
+        return (vout->display_info.lcd.rotation == dss_rotation_90_degree ||
+                        vout->display_info.lcd.rotation == dss_rotation_270_degree);
+}
+
 /**
  * Change LCD Overlay
  */
@@ -2885,8 +2952,21 @@ static int vidioc_s_fmt_vid_overlay(struct file *file, void *fh,
 	struct omap_vout_device *vout = fh;
 	struct v4l2_window *win = &f->fmt.win;
 	struct v4l2_window *lcd_win = &vout->display_info.lcd.win;
+        __s32   temp;
 
 	mutex_lock(&vout->lock);
+
+        /* flip the x,y coordinates to properly validate the video size against
+        rotated FB coordinates nad to properly center the video when <x,y)
+        is anything orher than (0,0)*/
+        if (rotate_90_or_270(vout)) {
+                temp = win->w.left;
+                win->w.left = win->w.top;
+                win->w.top = temp;
+        }
+
+        omap_vout_new_window(&vout->input_info.crop, &vout->display_info.lcd.win, &vout->buf_info.fbuf, win);
+
 	lcd_win->w	= win->w;	//Only Display Position will be used in cosmo	
 
 	lcd_win->w.top = (lcd_win->w.top/2)*2;
@@ -3036,6 +3116,14 @@ static int vidioc_s_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 	/* y resolution to be doubled in case of interlaced output */
 	if (ovl->info.field & OMAP_FLAG_IDEV)
 		multiplier = 2;
+
+        if (rotate_90_or_270(vout)) {
+                vout->buf_info.fbuf.fmt.height = timing->x_res;
+                vout->buf_info.fbuf.fmt.width = timing->y_res * multiplier;
+        } else {
+                vout->buf_info.fbuf.fmt.height = timing->y_res * multiplier ;
+                vout->buf_info.fbuf.fmt.width = timing->x_res;
+        }
 
 	if (vout->display_info.lcd.win.w.width <= 0 || vout->display_info.lcd.win.w.height <= 0)
 	{

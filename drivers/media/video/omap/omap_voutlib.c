@@ -107,9 +107,11 @@ int omap_vout_new_window(struct v4l2_rect *crop,
 		struct v4l2_window *win, struct v4l2_framebuffer *fbuf,
 		struct v4l2_window *new_win)
 {
-	int err;
+        int err;
 
-
+        err = omap_vout_try_window(fbuf, new_win);
+        if (err)
+                return err;
 
 	/* update our preview window */
 	win->w = new_win->w;
@@ -211,7 +213,7 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 		vresize = 4096;
 
 
-//	win->w.height = ((1024 * try_crop.height) / vresize) & ~1;
+	win->w.height = ((1024 * try_crop.height) / vresize) & ~1;
 	if (win->w.height == 0)
 		win->w.height = 2;
 	if (win->w.height + win->w.top > fbuf->fmt.height) {
@@ -220,7 +222,7 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 		 * cropping height to maintain the vertical resizing ratio.
 		 */
 
-//		win->w.height = (fbuf->fmt.height - win->w.top) & ~1;
+		win->w.height = (fbuf->fmt.height - win->w.top) & ~1;
 		if (try_crop.height == 0)
 			try_crop.height = 2;
 	}
@@ -232,7 +234,7 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 		hresize = 4096;
 
 
-//	win->w.width = ((1024 * try_crop.width) / hresize) & ~1;
+	win->w.width = ((1024 * try_crop.width) / hresize) & ~1;
 	if (win->w.width == 0)
 		win->w.width = 2;
 	if (win->w.width + win->w.left > fbuf->fmt.width) {
@@ -241,7 +243,7 @@ int omap_vout_new_crop(struct v4l2_pix_format *pix,
 		 * cropping width to maintain the horizontal resizing ratio.
 		 */
 
-//		win->w.width = (fbuf->fmt.width - win->w.left) & ~1;
+		win->w.width = (fbuf->fmt.width - win->w.left) & ~1;
 		if (try_crop.width == 0)
 			try_crop.width = 2;
 	}
