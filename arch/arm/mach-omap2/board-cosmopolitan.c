@@ -598,6 +598,10 @@ static struct regulator_init_data sdp4430_vaux1 = {
 	},
 };
 
+static struct regulator_consumer_supply sdp4430_vaux2_supply[] = {
+	REGULATOR_SUPPLY("av-switch", "soc-audio"),
+};
+
 static struct regulator_init_data sdp4430_vaux2 = {
 	.constraints = {
 		.min_uV			= 2800000,
@@ -613,6 +617,8 @@ static struct regulator_init_data sdp4430_vaux2 = {
 			.disabled       = true,
 		},
 	},
+	.num_consumer_supplies  = 1,
+	.consumer_supplies      = sdp4430_vaux2_supply,
 };
 
 static struct regulator_init_data sdp4430_vaux3 = {
