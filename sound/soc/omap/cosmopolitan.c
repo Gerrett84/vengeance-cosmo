@@ -54,25 +54,26 @@ static int twl6040_power_mode;
 static int mcbsp_cfg;
 
 static int sdp4430_modem_mcbsp_configure(struct snd_pcm_substream *substream,
-	int flag)
+				struct snd_pcm_hw_params *params, int flag)
 {
 	int ret = 0;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_pcm_substream *modem_substream[2];
 	struct snd_soc_pcm_runtime *modem_rtd;
+	int channels;
 
 	if (flag) {
+		modem_substream[substream->stream] =
+		snd_soc_get_dai_substream(rtd->card,
+						OMAP_ABE_BE_MM_EXT1,
+						substream->stream);
+		if (unlikely(modem_substream[substream->stream] == NULL))
+			return -ENODEV;
+
+		modem_rtd =
+			modem_substream[substream->stream]->private_data;
+
 		if (!mcbsp_cfg) {
-			modem_substream[substream->stream] =
-				snd_soc_get_dai_substream(rtd->card,
-							OMAP_ABE_BE_MM_EXT1,
-							substream->stream);
-			if (unlikely(modem_substream[substream->stream] == NULL))
-				return -ENODEV;
-
-			modem_rtd =
-				modem_substream[substream->stream]->private_data;
-
 			/* Set cpu DAI configuration */
 			ret = snd_soc_dai_set_fmt(modem_rtd->cpu_dai,
 					  SND_SOC_DAIFMT_I2S |
@@ -85,6 +86,18 @@ static int sdp4430_modem_mcbsp_configure(struct snd_pcm_substream *substream,
 			} else {
 				mcbsp_cfg = 1;
 			}
+		}
+
+		if (params != NULL) {
+			/* Configure McBSP internal buffer usage */
+			/* this need to be done for playback and/or record */
+			channels = params_channels(params);
+			if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+				omap_mcbsp_set_rx_threshold(
+					modem_rtd->cpu_dai->id, channels);
+			else
+				omap_mcbsp_set_tx_threshold(
+					modem_rtd->cpu_dai->id, channels);
 		}
 	} else {
 		mcbsp_cfg = 0;
@@ -139,7 +152,7 @@ static int sdp4430_mcpdm_hw_params(struct snd_pcm_substream *substream,
 
 	if (rtd->current_fe == ABE_FRONTEND_DAI_MODEM) {
 		/* set Modem McBSP configuration  */
-		ret = sdp4430_modem_mcbsp_configure(substream, 1);
+		ret = sdp4430_modem_mcbsp_configure(substream, params, 1);
 	}
 
 	return ret;
@@ -152,7 +165,7 @@ static int sdp4430_mcpdm_hw_free(struct snd_pcm_substream *substream)
 
 	if (rtd->current_fe == ABE_FRONTEND_DAI_MODEM) {
 		/* freed Modem McBSP configuration */
-		ret = sdp4430_modem_mcbsp_configure(substream, 0);
+		ret = sdp4430_modem_mcbsp_configure(substream, NULL, 0);
 	}
 
 	return ret;
@@ -172,15 +185,20 @@ static int sdp4430_mcbsp_hw_params(struct snd_pcm_substream *substream,
 	int ret = 0;
 
 	if (be_id == OMAP_ABE_DAI_BT_VX) {
-		ret = snd_soc_dai_set_fmt(cpu_dai,
-				SND_SOC_DAIFMT_PCM |
-				SND_SOC_DAIFMT_IB_IF |
-				SND_SOC_DAIFMT_CBM_CFM);
+	        ret = snd_soc_dai_set_fmt(cpu_dai,
+                                  SND_SOC_DAIFMT_DSP_B |
+                                  SND_SOC_DAIFMT_NB_IF |
+                                  SND_SOC_DAIFMT_CBM_CFM);
 	} else {
 		ret = snd_soc_dai_set_fmt(cpu_dai,
-				SND_SOC_DAIFMT_I2S |
-				SND_SOC_DAIFMT_NB_NF |
-				SND_SOC_DAIFMT_CBM_CFM);
+				  SND_SOC_DAIFMT_I2S |
+				  SND_SOC_DAIFMT_NB_NF |
+				  SND_SOC_DAIFMT_CBM_CFM);
+	}
+
+	if (ret < 0) {
+		printk(KERN_ERR "can't set cpu DAI configuration\n");
+		return ret;
 	}
 
 	/*
@@ -188,13 +206,9 @@ static int sdp4430_mcbsp_hw_params(struct snd_pcm_substream *substream,
 	 * do we need to enable it.
 	 */
 	/* Set McBSP clock to external */
-	ret = snd_soc_dai_set_sysclk(cpu_dai, OMAP_MCBSP_SYSCLK_CLKX_EXT, 0, SND_SOC_CLOCK_IN);
-
-	if (ret < 0) {
-		printk(KERN_ERR "can't set cpu DAI configuration\n");
-		return ret;
-	}
-	
+	ret = snd_soc_dai_set_sysclk(cpu_dai, OMAP_MCBSP_SYSCLK_CLKS_FCLK,
+				     64 * params_rate(params),
+				     SND_SOC_CLOCK_IN);
 	if (ret < 0) {
 		printk(KERN_ERR "can't set cpu system clock\n");
 		return ret;
@@ -228,7 +242,7 @@ static int sdp4430_dmic_hw_params(struct snd_pcm_substream *substream,
 
 	if (rtd->current_fe == ABE_FRONTEND_DAI_MODEM) {
 		/* set Modem McBSP configuration  */
-		ret = sdp4430_modem_mcbsp_configure(substream, 1);
+		ret = sdp4430_modem_mcbsp_configure(substream, params, 1);
 	}
 
 	return ret;
@@ -241,7 +255,7 @@ static int sdp4430_dmic_hw_free(struct snd_pcm_substream *substream)
 
 	if (rtd->current_fe == ABE_FRONTEND_DAI_MODEM) {
 		/* freed Modem McBSP configuration */
-		ret = sdp4430_modem_mcbsp_configure(substream, 0);
+		ret = sdp4430_modem_mcbsp_configure(substream, NULL, 0);
 	}
 
 	return ret;
@@ -253,37 +267,37 @@ static struct snd_soc_ops sdp4430_dmic_ops = {
 };
 
 static int mcbsp_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-                        struct snd_pcm_hw_params *params)
+			struct snd_pcm_hw_params *params)
 {
-        struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-        struct snd_interval *channels = hw_param_interval(params,
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_interval *channels = hw_param_interval(params,
                                        SNDRV_PCM_HW_PARAM_CHANNELS);
-        unsigned int be_id = rtd->dai_link->be_id;
-        unsigned int threshold;
+	unsigned int be_id = rtd->dai_link->be_id;
+	unsigned int threshold;
 
 
-        switch (be_id) {
-        case OMAP_ABE_DAI_MM_FM:
-                channels->min = 2;
-                threshold = 2;
-                break;
-        case OMAP_ABE_DAI_BT_VX:
-                channels->min = 1;
-                threshold = 1;
-                break;
-        default:
-                threshold = 1;
-                break;
-        }
+	switch (be_id) {
+	case OMAP_ABE_DAI_MM_FM:
+		channels->min = 2;
+		threshold = 2;
+		break;
+	case OMAP_ABE_DAI_BT_VX:
+		channels->min = 1;
+		threshold = 1;
+		break;
+	default:
+		threshold = 1;
+		break;
+	}
 
-        snd_mask_set(&params->masks[SNDRV_PCM_HW_PARAM_FORMAT -
-                                    SNDRV_PCM_HW_PARAM_FIRST_MASK],
-                     SNDRV_PCM_FORMAT_S16_LE);
+	snd_mask_set(&params->masks[SNDRV_PCM_HW_PARAM_FORMAT -
+				    SNDRV_PCM_HW_PARAM_FIRST_MASK],
+		     SNDRV_PCM_FORMAT_S16_LE);
 
-        omap_mcbsp_set_tx_threshold(cpu_dai->id, threshold);
-        omap_mcbsp_set_rx_threshold(cpu_dai->id, threshold);
+	omap_mcbsp_set_tx_threshold(cpu_dai->id, threshold);
+	omap_mcbsp_set_rx_threshold(cpu_dai->id, threshold);
 
-        return 0;
+	return 0;
 }
 
 static int dmic_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
@@ -704,6 +718,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "twl6040-codec",
 
 		.ops = &sdp4430_mcpdm_ops,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = "Legacy DMIC",
@@ -718,6 +733,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.codec_name = "dmic-codec.0",
 
 		.ops = &sdp4430_dmic_ops,
+		.ignore_suspend = 1,
 	},
 
 /*
@@ -741,6 +757,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.init = sdp4430_twl6040_init_hs,
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_DL1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_PDM_UL1,
@@ -757,6 +774,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_UL,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_PDM_DL2,
@@ -774,6 +792,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.init = sdp4430_twl6040_init_hf,
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_DL2,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_PDM_VIB,
@@ -790,6 +809,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.ops = &sdp4430_mcpdm_ops,
 		.be_id = OMAP_ABE_DAI_PDM_VIB,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_BT_VX,
@@ -807,6 +827,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.be_hw_params_fixup = mcbsp_be_hw_params_fixup,
 		.ops = &sdp4430_mcbsp_ops,
 		.be_id = OMAP_ABE_DAI_BT_VX,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_MM_EXT0,
@@ -859,6 +880,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.be_hw_params_fixup = dmic_be_hw_params_fixup,
 		.be_id = OMAP_ABE_DAI_DMIC0,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_DMIC1,
@@ -876,6 +898,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.be_hw_params_fixup = dmic_be_hw_params_fixup,
 		.be_id = OMAP_ABE_DAI_DMIC1,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = OMAP_ABE_BE_DMIC2,
@@ -893,6 +916,7 @@ static struct snd_soc_dai_link sdp4430_dai[] = {
 		.no_pcm = 1, /* don't create ALSA pcm for this */
 		.be_hw_params_fixup = dmic_be_hw_params_fixup,
 		.be_id = OMAP_ABE_DAI_DMIC2,
+		.ignore_suspend = 1,
 	},
 };
 
@@ -934,7 +958,7 @@ static int __init cosmopolitan_soc_init(void)
 	if (IS_ERR(av_switch_reg)) {
 		ret = PTR_ERR(av_switch_reg);
 		printk(KERN_ERR "couldn't get AV Switch regulator %d\n",
-				ret);
+			ret);
 		goto reg_err;
 	}
 
