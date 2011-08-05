@@ -41,6 +41,7 @@
 #include <sound/soc-dapm.h>
 #include <sound/initval.h>
 #include <sound/tlv.h>
+#include <sound/jack.h>
 
 #include "twl6040.h"
 
@@ -406,25 +407,61 @@ static int twl6040_hf_drv_event(struct snd_soc_dapm_widget *w,
 	return ret;
 }
 
+#define HEADSET_NONE   0
+#define WIRED_HEADSET  1//with MIC
+#define WIRED_HEADPHONE        2//without MIC
+#define TWL6040_I2C_RETRY_MAX 30
+
+static int twl6040_i2c_read(u8 reg, u8* value)
+{
+	int ret = -1;
+	int cnt = 0;
+
+	// sometimes, twl6040 make error. so, retry more...
+	while( ret < 0 && cnt++ < TWL6040_I2C_RETRY_MAX ){
+		ret = twl_i2c_read_u8(TWL_MODULE_AUDIO_VOICE, value, reg);
+		if( ret < 0 )
+			msleep(5);
+	}
+
+	return ret;
+}
+
 static void twl6040_hs_jack_report(struct snd_soc_codec *codec,
 				struct snd_soc_jack *jack, int report)
 {
 	struct twl6040_data *priv = snd_soc_codec_get_drvdata(codec);
-	int status, state;
+	int status, state, hkcomp;
 
 	mutex_lock(&priv->mutex);
 
 	/* Sync status */
 	status = twl6040_read_reg_volatile(codec, TWL6040_REG_STATUS);
 	if (status & TWL6040_PLUGCOMP)
-		state = report;
+		state = HEADSET_NONE;
 	else
-		state = 0;
+		state = WIRED_HEADSET;
 
+	#if 0
+	twl6040_i2c_read(TWL6040_REG_STATUS, &hkcomp);
+	hkcomp &= 0x01; //TWL6040_HKCOMP;
+	#endif
+
+	if (state) {
+		if (hkcomp) {
+			state = WIRED_HEADPHONE;
+			status = SND_JACK_HEADPHONE;
+		} else {
+			state = WIRED_HEADSET;
+			status = SND_JACK_HEADSET;
+		}
+	} else {
+		status = 0;
+	}
 	mutex_unlock(&priv->mutex);
 
-	snd_soc_jack_report(jack, state, report);
-	switch_set_state(&priv->hs_jack.sdev, !!state);
+	snd_soc_jack_report(jack, status, report);
+	switch_set_state(&priv->hs_jack.sdev, state);
 }
 
 void twl6040_hs_jack_detect(struct snd_soc_codec *codec,
