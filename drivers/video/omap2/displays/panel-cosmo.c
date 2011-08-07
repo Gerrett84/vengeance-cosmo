@@ -733,7 +733,7 @@ static ssize_t cosmo_sgx_manual_recovery_show(struct device *dev,
 	return 0;
 }
 
-extern void tmm_dmm_free_page_stack(void);
+//extern void tmm_dmm_free_page_stack(void);
 static ssize_t cosmo_sgx_manual_recovery_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -749,7 +749,7 @@ static ssize_t cosmo_sgx_manual_recovery_store(struct device *dev,
 		if(number == 3246)
 		{
 			// to do 
-			tmm_dmm_free_page_stack();
+			//tmm_dmm_free_page_stack();
 		}
 		else	
 	sgx_manual_recovery = 1;
