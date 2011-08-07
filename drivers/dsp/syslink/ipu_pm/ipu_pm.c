@@ -1,3 +1,4 @@
+#define TMP_AUX_CLK_HACK 1 /* should be removed by Nov 13, 2010 */
 #define SR_WA
 /*
  * ipu_pm.c
@@ -1507,6 +1508,11 @@ static inline int ipu_pm_get_iss(struct ipu_pm_object *handle,
 		return PM_UNSUPPORTED;
 	}
 
+#if TMP_AUX_CLK_HACK
+	rcb_p->fill9 = AUX_CLK_MIN;
+	ipu_pm_get_aux_clk(handle, rcb_p, params);
+#endif
+
 	retval = ipu_pm_module_start(rcb_p->sub_type);
 	if (retval) {
 		pr_err("%s %d Error requesting ISS\n", __func__, __LINE__);
@@ -2030,6 +2036,11 @@ static inline int ipu_pm_rel_iss(struct ipu_pm_object *handle,
 		pr_err("%s %d ISS not requested\n", __func__, __LINE__);
 		goto error;
 	}
+
+#if TMP_AUX_CLK_HACK
+	rcb_p->fill9 = AUX_CLK_MIN;
+	ipu_pm_rel_aux_clk(handle, rcb_p, params);
+#endif
 
 	retval = ipu_pm_module_stop(rcb_p->sub_type);
 	if (retval) {
