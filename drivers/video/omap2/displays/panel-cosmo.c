@@ -727,6 +727,7 @@ static ssize_t cosmo_panel_barrier_enable_store(struct device *dev,
 }
 
 
+#if 0
 static ssize_t cosmo_sgx_manual_recovery_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -758,13 +759,14 @@ static ssize_t cosmo_sgx_manual_recovery_store(struct device *dev,
 	return count;
 
 }
+static DEVICE_ATTR(sgx_manual_recovery, S_IRUGO|S_IWUSR|S_IWGRP, cosmo_sgx_manual_recovery_show, cosmo_sgx_manual_recovery_store);
+#endif
 
 
 static DEVICE_ATTR(num_dsi_errors, S_IRUGO, cosmo_panel_num_errors_show, NULL);
 static DEVICE_ATTR(hw_revision, S_IRUGO, cosmo_panel_hw_revision_show, NULL);
 static DEVICE_ATTR(barrier_enable, S_IRUGO|S_IWUSR|S_IWGRP, cosmo_panel_barrier_enable_show, cosmo_panel_barrier_enable_store);
 
-static DEVICE_ATTR(sgx_manual_recovery, S_IRUGO|S_IWUSR|S_IWGRP, cosmo_sgx_manual_recovery_show, cosmo_sgx_manual_recovery_store);
 
 void cosmo_panel_reset_lcd(void)
 {
@@ -841,7 +843,7 @@ static struct attribute *cosmo_panel_attrs[] = {
 	&dev_attr_hw_revision.attr,
 	&dev_attr_barrier_enable.attr,
 
-	&dev_attr_sgx_manual_recovery.attr,
+	//&dev_attr_sgx_manual_recovery.attr,
 	NULL,
 };
 

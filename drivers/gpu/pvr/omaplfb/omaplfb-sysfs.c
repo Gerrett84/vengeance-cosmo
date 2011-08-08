@@ -18,14 +18,6 @@
 #include <linux/device.h>
 #include <linux/uaccess.h>
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32))
-#include <plat/vrfb.h>
-#include <plat/display.h>
-#else
-#include <mach/vrfb.h>
-#include <mach/display.h>
-#endif
-
 #include "img_defs.h"
 #include "servicesext.h"
 #include "kerneldisplay.h"

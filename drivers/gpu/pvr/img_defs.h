@@ -76,9 +76,6 @@ typedef char				TCHAR, *PTCHAR, *PTSTR;
 #define _TCHAR_DEFINED
 #endif 
 
-#ifndef __linux__
-#define __linux__
-#endif
 
 			#if defined(__linux__) || defined(__METAG)
 
