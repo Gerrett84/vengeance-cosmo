@@ -107,7 +107,7 @@ static const u8 twl6040_reg[TWL6040_CACHEREGNUM] = {
 	0x60, /* TWL6040_HPPLLCTL	0x07	*/
 	0x00, /* TWL6040_LPPLLCTL	0x08	*/
 	0x4A, /* TWL6040_LPPLLDIV	0x09	*/
-	0x00, /* TWL6040_AMICBCTL	0x0A	*/
+	0x44, /* TWL6040_AMICBCTL	0x0A	*/
 	0x00, /* TWL6040_DMICBCTL	0x0B	*/
 	0x18, /* TWL6040_MICLCTL	0x0C	- No input selected on Left Mic */
 	0x18, /* TWL6040_MICRCTL	0x0D	- No input selected on Right Mic */
@@ -125,9 +125,9 @@ static const u8 twl6040_reg[TWL6040_CACHEREGNUM] = {
 	0x00, /* TWL6040_VIBDATL	0x19	*/
 	0x00, /* TWL6040_VIBCTLR	0x1A	*/
 	0x00, /* TWL6040_VIBDATR	0x1B	*/
-	0x00, /* TWL6040_HKCTL1		0x1C	*/
-	0x00, /* TWL6040_HKCTL2		0x1D	*/
-	0x00, /* TWL6040_GPOCTL		0x1E	*/
+	0x10, /* TWL6040_HKCTL1		0x1C	*/
+	0xC7, /* TWL6040_HKCTL2		0x1D	*/
+	0x02, /* TWL6040_GPOCTL		0x1E	*/
 	0x00, /* TWL6040_ALB		0x1F	*/
 	0x00, /* TWL6040_DLB		0x20	*/
 	0x00, /* not used		0x21	*/

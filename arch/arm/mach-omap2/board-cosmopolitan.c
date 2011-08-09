@@ -209,7 +209,6 @@ struct platform_device cosmo_mtc_eta_log_device = {
 
 static struct pwm_vib_platform_data vib_data = {
         .max_timeout            =       15000,
-        .active_low                     =       0,
         .initial_vibrate        =       0,
 };
 
@@ -716,6 +715,7 @@ static struct regulator_init_data sdp4430_vusim = {
 			.enabled        = false,
 			.disabled       = true,
 		},
+		.always_on	= true,
 	},
 };
 
