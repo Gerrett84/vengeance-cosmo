@@ -324,19 +324,6 @@ static struct snd_soc_jack_pin hs_jack_pins[] = {
 	},
 };
 
-static int sdp4430_av_switch_event(struct snd_soc_dapm_widget *w,
-				   struct snd_kcontrol *kcontrol, int event)
-{
-	int ret;
-
-	if (SND_SOC_DAPM_EVENT_ON(event))
-		ret = regulator_enable(av_switch_reg);
-	else
-		ret = regulator_disable(av_switch_reg);
-
-	return ret;
-}
-
 static int sdp4430_get_power_mode(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
@@ -374,9 +361,6 @@ static const struct snd_soc_dapm_widget sdp4430_twl6040_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headset Stereophone", NULL),
 	SND_SOC_DAPM_SPK("Earphone Spk", NULL),
 	SND_SOC_DAPM_INPUT("Aux/FM Stereo In"),
-	SND_SOC_DAPM_SUPPLY("AV Switch Supply",
-			    SND_SOC_NOPM, 0, 0, sdp4430_av_switch_event,
-			    SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 };
 
 static const struct snd_soc_dapm_route audio_map[] = {
@@ -392,7 +376,6 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	/* Headset Mic: HSMIC with bias */
 	{"HSMIC", NULL, "Headset Mic Bias"},
 	{"Headset Mic Bias", NULL, "Headset Mic"},
-	{"Headset Mic", NULL, "AV Switch Supply"},
 
 	/* Headset Stereophone (Headphone): HSOL, HSOR */
 	{"Headset Stereophone", NULL, "HSOL"},
@@ -973,14 +956,6 @@ static int __init cosmopolitan_soc_init(void)
 	if (ret)
 		goto plat_err;
 
-	av_switch_reg = regulator_get(&sdp4430_snd_device->dev, "av-switch");
-	if (IS_ERR(av_switch_reg)) {
-		ret = PTR_ERR(av_switch_reg);
-		printk(KERN_ERR "couldn't get AV Switch regulator %d\n",
-			ret);
-		goto reg_err;
-	}
-
 	/* Default mode is low-power, MCLK not required */
 	twl6040_power_mode = 0;
 	cdc_tcxo_set_req_int(CDC_TCXO_CLK2, 0);
@@ -993,8 +968,6 @@ static int __init cosmopolitan_soc_init(void)
 
 	return ret;
 
-reg_err:
-	platform_device_del(sdp4430_snd_device);
 plat_err:
 	printk(KERN_ERR "Unable to add platform device\n");
 	platform_device_put(sdp4430_snd_device);
