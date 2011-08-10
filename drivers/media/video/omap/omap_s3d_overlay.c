@@ -273,14 +273,13 @@ static int v4l2_rot_to_dss_rot(const unsigned int v4l2_rotation,
 {
 	switch (v4l2_rotation) {
 	case 90:
-		//*rotation = OMAP_DSS_ROT_270;
 		*rotation = OMAP_DSS_ROT_90;
 		break;
 	case 180:
 		*rotation = OMAP_DSS_ROT_180;
 		break;
 	case 270:
-		*rotation = OMAP_DSS_ROT_90;
+		*rotation = OMAP_DSS_ROT_270;
 		break;
 	case 0:
 		*rotation = OMAP_DSS_ROT_0;
@@ -1663,9 +1662,27 @@ static int change_s3d_mode(struct s3d_ovl_device *dev,
 
 	disp = dev->cur_disp;
 	enable_s3d = (mode == V4L2_S3D_MODE_ON) && !dev->override_s3d_disp;
+	if (!disp) {
+		WARN_ON(1);
+		S3DERR("NULL display pointer!\n");
+		return -EFAULT;
+	}
+	if (disp->driver && disp->driver->enable_s3d) {
+		struct omap_video_timings timings = disp->panel.timings;
+		r = disp->driver->enable_s3d(disp, enable_s3d);
+		if (enable_s3d && r) {
+			S3DWARN("failed to enable S3D display\n");
+			/*fallback to anaglyph mode*/
+			mode = dev->s3d_mode = V4L2_S3D_MODE_ANAGLYPH;
+		}
+		/* If display resolution has changed after 3D switching
+		   reset the window setting */
+		if (timings.x_res != disp->panel.timings.x_res ||
+			timings.y_res != disp->panel.timings.y_res)
+			set_default_window(dev, &dev->win);
+	}
 
-
-	if(disp->panel.s3d_info.type == S3D_DISP_NONE &&
+	if (disp->panel.s3d_info.type == S3D_DISP_NONE &&
 		mode == V4L2_S3D_MODE_ON &&
 		!dev->override_s3d_disp)
 		mode = dev->s3d_mode = V4L2_S3D_MODE_ANAGLYPH;
@@ -2987,7 +3004,7 @@ static int vidioc_streamon(struct file *file, void *fh, enum v4l2_buf_type i)
 
 	/*TODO: if the panel resolution changes after going to 3D
 	   what to do we do with the current window setting*/
-	/* set_default_window(dev, &dev->win); */
+	set_default_window(dev, &dev->win);
 
 	r = allocate_resources(dev);
 	if (r) {
