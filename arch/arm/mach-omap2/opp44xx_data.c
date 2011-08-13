@@ -41,8 +41,6 @@ static struct clk *per_m3_clk, *per_m6_clk;
 static struct clk *abe_clk, *sgx_clk, *fdif_clk, *hsi_clk;
 
 
-static bool bootup_m3_with_maxclcok =1;
-
 static struct omap_opp_def __initdata omap44xx_pre_es2_1_opp_def_list[] = {
 	/* MPU OPP1 - OPP50 */
 	OMAP_OPP_DEF("mpu", true, 300000000, 930000),
@@ -374,30 +372,18 @@ static int omap4_l3_set_rate(struct device *dev, unsigned long rate)
 	u32 d_per_m3_rate, d_per_m6_rate;
 	
 
-	if(bootup_m3_with_maxclcok ==1){
+	if (rate <= L3_OPP50_RATE) {
+		d_core_m3_rate = DPLL_CORE_M3_OPP50_RATE;
+		d_core_m6_rate = DPLL_CORE_M6_OPP50_RATE;
+		d_core_m7_rate = DPLL_CORE_M7_OPP50_RATE;
+		d_per_m3_rate = DPLL_PER_M3_OPP50_RATE;
+		d_per_m6_rate = DPLL_PER_M6_OPP50_RATE;
+	} else {
 		d_core_m3_rate = DPLL_CORE_M3_OPP100_RATE;
 		d_core_m6_rate = DPLL_CORE_M6_OPP100_RATE;
 		d_core_m7_rate = DPLL_CORE_M7_OPP100_RATE;
 		d_per_m3_rate = DPLL_PER_M3_OPP100_RATE;
 		d_per_m6_rate = DPLL_PER_M6_OPP100_RATE;
-
-		bootup_m3_with_maxclcok=0;
-	}
-	else{
-
-		if (rate <= L3_OPP50_RATE) {
-			d_core_m3_rate = DPLL_CORE_M3_OPP50_RATE;
-			d_core_m6_rate = DPLL_CORE_M6_OPP50_RATE;
-			d_core_m7_rate = DPLL_CORE_M7_OPP50_RATE;
-			d_per_m3_rate = DPLL_PER_M3_OPP50_RATE;
-			d_per_m6_rate = DPLL_PER_M6_OPP50_RATE;
-		} else {
-			d_core_m3_rate = DPLL_CORE_M3_OPP100_RATE;
-			d_core_m6_rate = DPLL_CORE_M6_OPP100_RATE;
-			d_core_m7_rate = DPLL_CORE_M7_OPP100_RATE;
-			d_per_m3_rate = DPLL_PER_M3_OPP100_RATE;
-			d_per_m6_rate = DPLL_PER_M6_OPP100_RATE;
-		}
 	}
 	clk_set_rate(core_m3_clk, d_core_m3_rate);
 	d_core_m6_rate = clk_round_rate(core_m6_clk, d_core_m6_rate);
