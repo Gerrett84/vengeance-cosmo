@@ -163,6 +163,8 @@ enum STREAMING_STATUS {
 	E_STREAMING_NO_DRAW
 };
 
+#define MAX_CID         3
+
 /* per-device data structure */
 struct omap_vout_device {
 
@@ -220,6 +222,7 @@ struct omap_vout_device {
 		enum v4l2_frame_pack_order	s3d_pack_order;
 		struct {
 			struct v4l2_window	win;
+			struct v4l2_control control[MAX_CID];
 			enum dss_rotation	rotation;
 			bool 				mirror;
 			struct omap_vout_vram_buffer *wb_buffer[2];	//for ping-pong write

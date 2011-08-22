@@ -823,6 +823,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_enabled = true;
 			info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 		}
 
 		//src type
@@ -830,6 +831,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_key_type = OMAP_DSS_COLOR_KEY_VID_SRC;
 			info_changed =true;
+		printk("Changed at %d\n",__LINE__);
 		}
 
 		//dst type
@@ -837,6 +839,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_key_type = OMAP_DSS_COLOR_KEY_GFX_DST;
 			info_changed =true;
+		printk("Changed at %d\n",__LINE__);
 		}
 
 		//trans color
@@ -844,6 +847,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_key = trans_key;
 			info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 		}
 	}
 	else
@@ -852,6 +856,7 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 		{
 			info.trans_enabled = false;
 			info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 		}
 	}
 
@@ -859,17 +864,19 @@ static int omap_vout_display_set_alpha_and_trans(struct omap_vout_device *vout, 
 	{
 		info.alpha_enabled = true;
 		info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 	}
 	if ( !(flags&V4L2_FBUF_FLAG_LOCAL_ALPHA) && info.alpha_enabled )
 	{
 		info.alpha_enabled = false;
 		info_changed = true;
+		printk("Changed at %d\n",__LINE__);
 	}
 
 	if ( info_changed )
 	{
-		printk("VOUT Trans & Alpha value changed alpah enalbed(%d), trans_enabled(%d), trans_type(%d), transk_color(%u)\n",
-				info.alpha_enabled, info.trans_enabled, info.trans_key_type, info.trans_key);
+		//printk("VOUT Trans & Alpha value changed alpah enalbed(%d), trans_enabled(%d), trans_type(%d), transk_color(%u)\n",
+		//		info.alpha_enabled, info.trans_enabled, info.trans_key_type, info.trans_key);
 		mgr->set_manager_info(mgr, &info);
 	}
 
@@ -1118,6 +1125,11 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 	ovlInfo.vaddr	= NULL;
 	ovlInfo.color_mode	= fInfo->color;
 
+        vout = fInfo->vout;
+	ovlInfo.mirror	= vout->display_info.lcd.mirror;
+        if (vout->display_info.lcd.mirror)
+                rotation ^= dss_rotation_180_degree;
+
 	ovlInfo.rotation	= rotation;
 	ovlInfo.rotation_type	= OMAP_DSS_ROT_TILER;	//always tiler..
 	if ( rotation==OMAP_DSS_ROT_90 || rotation==OMAP_DSS_ROT_270 )
@@ -1132,7 +1144,6 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 		ovlInfo.height	= fInfo->crop.height;
 		ovlInfo.screen_width = fInfo->pix.width;
 	}
-	ovlInfo.mirror	= 0;
 	ovlInfo.pos_x	= pos_x;
 	ovlInfo.pos_y	= pos_y;
 
@@ -1162,7 +1173,6 @@ static int omap_vout_display_to_overlay_2d(struct omap_overlay *ovl, struct vide
 	}	
 #endif
 
-        vout = fInfo->vout;
         calc_overlay_window_params(vout, &ovlInfo);
 	//set overlay
 	if ( ovl->set_overlay_info(ovl, &ovlInfo) )
@@ -1855,7 +1865,7 @@ static int  omap_vout_display_lcd(struct omap_vout_device *vout,
 				omap_vout_remap_overlay_manager(lcd,lcd_mgr);
 			}
 			//set trans & alpha
-			omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
+			//omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
 		}
 		r =  omap_vout_display_to_overlay_2d(lcd,
 				frame,
@@ -1898,7 +1908,7 @@ static int  omap_vout_display_lcd(struct omap_vout_device *vout,
 					omap_vout_remap_overlay_manager(lcd, lcd_mgr);
 				}
 				//set trans & alpha
-				omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
+				//omap_vout_display_set_alpha_and_trans(vout, lcd_mgr);
 			}
 
 			//HDMI layer will be used as WB input layer
@@ -2117,7 +2127,7 @@ static int  omap_vout_display_hdmi(struct omap_vout_device *vout,
 	}
 
 	//set alpha & transparent
-	omap_vout_display_set_alpha_and_trans(vout, hdmi_mgr);
+	//omap_vout_display_set_alpha_and_trans(vout, hdmi_mgr);
 
 	//set info
 	if ( out_is_2d )
@@ -3178,10 +3188,10 @@ static int vidioc_g_ctrl(struct file *file, void *fh, struct v4l2_control *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_ROTATE:
-		dss_rot_to_v4l2_rot( vout->display_info.lcd.rotation, &ctrl->value);
+		ctrl->value = vout->display_info.lcd.control[0].value;
 		break;
         case V4L2_CID_VFLIP:
-                ctrl->value = 0;
+                ctrl->value = vout->display_info.lcd.control[2].value;
                 break;
 	case V4L2_CID_TI_DISPC_OVERLAY:
 		ctrl->value = vout->vid_info.overlays.named.lcd->id;
@@ -3234,7 +3244,9 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 		{
 			mutex_unlock(&vout->lock);
 			return  -EINVAL;
-		}		
+		}
+
+		vout->display_info.lcd.control[0].value = rotation;
 		mutex_unlock(&vout->lock);
 
 		
@@ -3242,7 +3254,26 @@ static int vidioc_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 		break;
 	}
         case V4L2_CID_VFLIP:
+	{
+                struct omap_overlay *ovl;
+                struct omapvideo_info *ovid;
+                unsigned int  mirror = a->value;
+
+                ovid = &vout->vid_info;
+                ovl = vout->vid_info.overlays.named.lcd;
+
+                mutex_lock(&vout->lock);
+
+                if (mirror  && vout->input_info.pix.pixelformat == V4L2_PIX_FMT_RGB24) {
+                        mutex_unlock(&vout->lock);
+                        ret = -EINVAL;
+                        break;
+                }
+                //vout->display_info.lcd.mirror = mirror;
+                vout->display_info.lcd.control[2].value = mirror;
+                mutex_unlock(&vout->lock);
                 break;
+	}
 	case ( V4L2_CID_PRIVATE_BASE + 'H'*0x100 + 'e' ) :	//HDMI enable flag
 		mutex_lock(&vout->lock);
 		if ( vout->display_info.hdmi.enable && !a->value && vout->streaming_status==E_STREAMING_ON_GOING )
@@ -3749,10 +3780,15 @@ static int vidioc_s_fbuf(struct file *file, void *fh,
 {
 	struct omapvideo_info *ovid;
 	struct omap_vout_device *vout = fh;
+	struct omap_overlay *ovl;
+	struct omap_overlay_manager_info info;
 	int ret = 0;
+	int enable = 0;
+	enum omap_dss_trans_key_type key_type = OMAP_DSS_COLOR_KEY_GFX_DST;
 
 	mutex_lock(&vout->lock);
 	ovid = &vout->vid_info;
+	ovl = ovid->overlays.named.lcd;
 
 	/* OMAP DSS doesn't support Source and Destination color
 	   key together */
@@ -3762,14 +3798,19 @@ static int vidioc_s_fbuf(struct file *file, void *fh,
 		ret = -EINVAL;
 		goto EXIT;
 	}
-	/* OMAP DSS Doesn't support the Destination color key
-	   and alpha blending together */
-	if ((a->flags & V4L2_FBUF_FLAG_CHROMAKEY) &&
-			(a->flags & V4L2_FBUF_FLAG_LOCAL_ALPHA))
-	{
-		ret = -EINVAL;
-		goto EXIT;
-	}
+        if ((a->flags & V4L2_FBUF_FLAG_SRC_CHROMAKEY)) {
+                vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_SRC_CHROMAKEY;
+                key_type =  OMAP_DSS_COLOR_KEY_VID_SRC;
+        } else
+                vout->buf_info.fbuf.flags &= ~V4L2_FBUF_FLAG_SRC_CHROMAKEY;
+
+        if ((a->flags & V4L2_FBUF_FLAG_CHROMAKEY)) {
+                vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_CHROMAKEY;
+                key_type =  OMAP_DSS_COLOR_KEY_GFX_DST;
+        } else
+                vout->buf_info.fbuf.flags &=  ~V4L2_FBUF_FLAG_CHROMAKEY;
+
+
 
 	//set attributes
 	if ((a->flags & V4L2_FBUF_FLAG_SRC_CHROMAKEY)) {
@@ -3781,11 +3822,43 @@ static int vidioc_s_fbuf(struct file *file, void *fh,
 		vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_CHROMAKEY;
 	} else
 		vout->buf_info.fbuf.flags &=  ~V4L2_FBUF_FLAG_CHROMAKEY;
+
+        if (a->flags & (V4L2_FBUF_FLAG_CHROMAKEY |
+                                V4L2_FBUF_FLAG_SRC_CHROMAKEY))
+                enable = 1;
+        else
+                enable = 0;
+        if (ovl->manager && ovl->manager->get_manager_info &&
+                        ovl->manager->set_manager_info) {
+
+                ovl->manager->get_manager_info(ovl->manager, &info);
+                info.trans_enabled = enable;
+                info.trans_key_type = key_type;
+                info.trans_key = vout->display_info.lcd.win.chromakey;
+
+                if (ovl->manager->set_manager_info(ovl->manager, &info))
+			ret = -EINVAL;
+			goto EXIT;
+        }
+
 	if (a->flags & V4L2_FBUF_FLAG_LOCAL_ALPHA) {
 		vout->buf_info.fbuf.flags |= V4L2_FBUF_FLAG_LOCAL_ALPHA;
+		enable = 1;
 	} else {
 		vout->buf_info.fbuf.flags &= ~V4L2_FBUF_FLAG_LOCAL_ALPHA;
+		enable = 0;
 	}
+
+        if (ovl->manager && ovl->manager->get_manager_info &&
+                        ovl->manager->set_manager_info) {
+                ovl->manager->get_manager_info(ovl->manager, &info);
+                info.alpha_enabled = enable;
+                if (ovl->manager->set_manager_info(ovl->manager, &info)) {
+			ret = -EINVAL;
+			goto EXIT;
+		}
+        }
+
 EXIT:
 	mutex_unlock(&vout->lock);
 	return ret;
@@ -3795,12 +3868,24 @@ static int vidioc_g_fbuf(struct file *file, void *fh,
 		struct v4l2_framebuffer *a)
 {
 	struct omap_vout_device *vout = fh;
+	struct omapvideo_info *ovid;
+	struct omap_overlay *ovl;
+	struct omap_overlay_manager_info info;
 
 	mutex_lock(&vout->lock);
 
 	a->flags = vout->buf_info.fbuf.flags;
 	a->capability = V4L2_FBUF_CAP_LOCAL_ALPHA | V4L2_FBUF_CAP_CHROMAKEY
 		| V4L2_FBUF_CAP_SRC_CHROMAKEY;
+
+	ovid = &vout->vid_info;
+	ovl = ovid->overlays.named.lcd;
+
+        if (ovl->manager && ovl->manager->get_manager_info) {
+                ovl->manager->get_manager_info(ovl->manager, &info);
+                if (info.alpha_enabled)
+                        a->flags |= V4L2_FBUF_FLAG_LOCAL_ALPHA;
+        }
 
 	mutex_unlock(&vout->lock);
 
@@ -3859,6 +3944,7 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 {
 	struct video_device *vfd;
 	struct v4l2_pix_format *pix;
+        struct v4l2_control *control;
 
 	/* set the default pix */
 	pix = &vout->input_info.pix;
@@ -3888,6 +3974,19 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 
 	omap_vout_new_format(pix, &vout->buf_info.fbuf, &vout->input_info.crop, &vout->display_info.lcd.win);
 
+
+        /*Initialize the control variables for
+          rotation, flipping and background color. */
+        control = vout->display_info.lcd.control;
+        control[0].id = V4L2_CID_ROTATE;
+        control[0].value = 0;
+        vout->display_info.lcd.rotation = 0;
+        vout->display_info.lcd.mirror = 0;
+        vout->display_info.lcd.control[2].id = V4L2_CID_HFLIP;
+        vout->display_info.lcd.control[2].value = 0;
+
+        control[1].id = V4L2_CID_BG_COLOR;
+        control[1].value = 0;
 
 	/* initialize the video_device struct */
 	vfd = vout->vfd = video_device_alloc();
