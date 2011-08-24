@@ -37,6 +37,13 @@
 #endif
 #define MAX_MANAGERS	3
 
+#define OMAP_VOUT_MAX_BUFFERS    6
+/*
+ * Currently VRFB BUF context and Data Buffers are mapped 1:1
+ */
+#define OMAP_VOUT_MAX_VRFB_CTXT        OMAP_VOUT_MAX_BUFFERS
+
+
 /* TI Private V4L2 ioctls */
 #define V4L2_CID_TI_DISPC_OVERLAY	(V4L2_CID_PRIVATE_BASE + 0)
 

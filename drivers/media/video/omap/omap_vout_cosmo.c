@@ -91,9 +91,11 @@ enum dma_channel_state {
 #ifdef CONFIG_ARCH_OMAP4
 #define VID_MAX_WIDTH		4096	/* Largest width */
 #define VID_MAX_HEIGHT		4096	/* Largest height */
+#define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*4)
 #else
 #define VID_MAX_WIDTH		1280	/* Largest width */
 #define VID_MAX_HEIGHT		720	/* Largest height */
+#define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*2)
 #endif
 /* Mimimum requirement is 2x2 for DSS */
 #define VID_MIN_WIDTH		2
@@ -103,10 +105,7 @@ enum dma_channel_state {
 #define MAX_PIXELS_PER_LINE     2048
 
 #define VRFB_TX_TIMEOUT         1000
-#define VRFB_NUM_BUFS		4
-
-/* Max buffer size tobe allocated during init */
-#define OMAP_VOUT_MAX_BUF_SIZE (VID_MAX_WIDTH*VID_MAX_HEIGHT*4)
+#define VRFB_NUM_BUFS          OMAP_VOUT_MAX_BUFFERS
 
 #define VDD2_OCP_FREQ_CONST     (cpu_is_omap34xx() ? \
 (cpu_is_omap3630() ? 200000 : 166000) : 0)
@@ -118,8 +117,8 @@ static struct videobuf_queue_ops video_vbq_ops;
 
 
 /* Variables configurable through module params*/
-static u32 video1_numbuffers = 3;
-static u32 video2_numbuffers = 3;
+static u32 video1_numbuffers = OMAP_VOUT_MAX_BUFFERS;
+static u32 video2_numbuffers = OMAP_VOUT_MAX_BUFFERS;
 static u32 video1_bufsize = OMAP_VOUT_MAX_BUF_SIZE;
 static u32 video2_bufsize = OMAP_VOUT_MAX_BUF_SIZE;
 static u32 video3_numbuffers = 3;
@@ -128,6 +127,7 @@ static u32 vid1_static_vrfb_alloc;
 static u32 vid2_static_vrfb_alloc;
 static int debug;
 
+static int vidioc_streamoff(struct file *file, void *fh, enum v4l2_buf_type i);
 /* Module parameters */
 module_param(video1_numbuffers, uint, S_IRUGO);
 MODULE_PARM_DESC(video1_numbuffers,
@@ -261,9 +261,21 @@ static void omap_vout_free_buffer(unsigned long virtaddr, u32 buf_size)
 int omap_vout_try_format(struct v4l2_pix_format *pix)
 {
 	int ifmt, bpp = 0;
+	int img_size = pix->height * pix->width;
 
-	pix->height = clamp(pix->height, (u32)VID_MIN_HEIGHT,
-						(u32)VID_MAX_HEIGHT);
+	if (img_size <= VID_MAX_HEIGHT * VID_MAX_WIDTH) {
+		if (cpu_is_omap34xx())
+			pix->height = clamp(pix->height,
+					(u32)VID_MIN_HEIGHT,
+					(u32)VID_MAX_WIDTH);
+		else
+			pix->height = clamp(pix->height,
+					(u32)VID_MIN_HEIGHT,
+					(u32)VID_MAX_HEIGHT);
+	} else {
+		pix->height = clamp(pix->height, (u32)VID_MIN_HEIGHT,
+				(u32)VID_MAX_HEIGHT);
+	}
 	pix->width = clamp(pix->width, (u32)VID_MIN_WIDTH, (u32)VID_MAX_WIDTH);
 
 	for (ifmt = 0; ifmt < NUM_OUTPUT_FORMATS; ifmt++) {
@@ -587,10 +599,17 @@ enum omap_color_mode video_mode_to_dss_mode(struct v4l2_pix_format *pix)
 	case V4L2_PIX_FMT_UYVY:
 		mode = OMAP_DSS_COLOR_UYVY;
 		break;
+	case V4L2_PIX_FMT_RGB555:
+		mode = OMAP_DSS_COLOR_ARGB16_1555;
+		break;
+	case V4L2_PIX_FMT_RGB444:
+		mode = OMAP_DSS_COLOR_ARGB16;
+		break;
 	case V4L2_PIX_FMT_RGB565:
 		mode = OMAP_DSS_COLOR_RGB16;
 		break;
 	case V4L2_PIX_FMT_RGB24:
+	case V4L2_PIX_FMT_BGR24:
 		mode = OMAP_DSS_COLOR_RGB24P;
 		break;
 	case V4L2_PIX_FMT_RGB32:
@@ -3655,7 +3674,7 @@ streamon_err:
 	if (ret)
 	{
 		ERR_PRINTK("Stream on failed\n");
-		videobuf_streamoff(q);
+		vidioc_streamoff(file, fh, i);
 	}
 	else
 		DBG_PRINTK("Strea on Success\n");
