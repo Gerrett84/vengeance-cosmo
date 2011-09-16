@@ -123,7 +123,7 @@
 #define APDS9900_STATUS_AINT	0x10
 
 
-#define APDS900_SENSOR_DEBUG 1
+#define APDS900_SENSOR_DEBUG 0
  #if APDS900_SENSOR_DEBUG
  #define DEBUG_MSG(args...)  printk(args)
  #else
@@ -430,7 +430,7 @@ static void apds_9900_init(void)
 	apds9900_oldProximity = 2;
 
 
-	printk("apds_9900_init DONE!\n");
+	DEBUG_MSG("apds_9900_init DONE!\n");
 }
 
 
@@ -746,7 +746,7 @@ static ssize_t apds9900_store_interrupt(struct device *dev,
 	int val = 0;
 	int ret;
 
-	printk("apds9900_store_interrupt = [%d] apds_9900_initlizatied [%d] \n",rdata, apds_9900_initlizatied);
+	DEBUG_MSG("apds9900_store_interrupt = [%d] apds_9900_initlizatied [%d] \n",rdata, apds_9900_initlizatied);
 
 	if(enable_status == 0 && (rdata == STORE_INTERUPT_SELECT_PROXIMITY || rdata == STORE_INTERUPT_SELECT_ALS))
 	{
@@ -868,7 +868,7 @@ static ssize_t apds9900_store_interrupt(struct device *dev,
 		enable_irq(data->irq);
 	}
 
-	printk("apds9900_store_interrupt enable_status = [%x] data->enable [%x] \n",enable_status, data->enable);
+	DEBUG_MSG("apds9900_store_interrupt enable_status = [%x] data->enable [%x] \n",enable_status, data->enable);
 
 	if (ret < 0)
 		return ret;
@@ -963,7 +963,7 @@ static void apds9900_polling_work_handler(struct work_struct *work)
 	irdata = i2c_smbus_read_word_data(apds_9900_i2c_client, CMD_WORD|APDS9900_IRDATAL_REG);
 	pdata = i2c_smbus_read_word_data(apds_9900_i2c_client, CMD_WORD|APDS9900_PDATAL_REG);
 		
-	printk("9900_poll status=%x, pers=%x, cdata=%x, irdata=%x, pdata=%x\n", status, pers, cdata, irdata, pdata);
+	DEBUG_MSG("9900_poll status=%x, pers=%x, cdata=%x, irdata=%x, pdata=%x\n", status, pers, cdata, irdata, pdata);
 
 	schedule_delayed_work(&data->poll_dwork, msecs_to_jiffies(data->poll_delay));	// restart timer
 }
@@ -973,7 +973,7 @@ void apds_9900_proximity_handler(struct apds9900_data *data, int cData)
 {
 	int rdata = i2c_smbus_read_word_data(apds_9900_i2c_client, CMD_WORD|APDS9900_PDATAL_REG);		
 	
-	printk("prox sensor report data = [%d][%d][%d]\n",rdata, cData, apds9900_oldProximity);
+	DEBUG_MSG("prox sensor report data = [%d][%d][%d]\n",rdata, cData, apds9900_oldProximity);
 
 #ifdef APDS9900_WAKE_LOCK
 	if(wake_lock_active(&(data->apds9900_wake_lock)))
@@ -1002,7 +1002,7 @@ void apds_9900_proximity_handler(struct apds9900_data *data, int cData)
 		
 		data->ps_detection = 0;	/* 0 = far-to-near;	1 = near-to-far */
 
-		printk("apds_9900_proximity_handler = NEAR\n");	
+		DEBUG_MSG("apds_9900_proximity_handler = NEAR\n");	
 	}
 	else if ( (rdata <= data->pilt) && (rdata < data->piht) )
 	{
@@ -1019,7 +1019,7 @@ void apds_9900_proximity_handler(struct apds9900_data *data, int cData)
 
 		data->ps_detection = 1;	/* 0 = far-to-near;	1 = near-to-far */
 
-		printk("apds_9900_proximity_handler = FAR 2 \n");	
+		DEBUG_MSG("apds_9900_proximity_handler = FAR 2 \n");	
 	}
 	else if ( (rdata <= data->pilt) || (rdata >= data->piht) )
 	{
@@ -1036,11 +1036,11 @@ void apds_9900_proximity_handler(struct apds9900_data *data, int cData)
 
 		data->ps_detection = 1;	/* 0 = far-to-near;	1 = near-to-far */
 
-		printk("apds_9900_proximity_handler = FAR 3\n");	
+		DEBUG_MSG("apds_9900_proximity_handler = FAR 3\n");	
 	}
 	else 
 	{
-		printk("apds_9900_proximity_handler no conditions pilt=%x, piht=%x, pdata=%x, cdata=%x\n", data->pilt, data->piht, rdata, cData);	
+		DEBUG_MSG("apds_9900_proximity_handler no conditions pilt=%x, piht=%x, pdata=%x, cdata=%x\n", data->pilt, data->piht, rdata, cData);	
 	}
 
 }
@@ -1083,7 +1083,7 @@ void apds_9900_als_handler(struct apds9900_data *data)
 
 		data->ps_detection = 1;	/* 0 = far-to-near;	1 = near-to-far */
 
-		printk("apds_9900_proximity_handler = FAR 4\n");	
+		DEBUG_MSG("apds_9900_proximity_handler = FAR 4\n");	
 	}
 
 	//report vlaue to sensors.cpp
@@ -1103,7 +1103,7 @@ void apds_9900_als_handler(struct apds9900_data *data)
 	apds9900_set_enable(apds_9900_i2c_client,0);
 
 	if (enable_PS_status == 1) { /* kk 19 May 2011 don't change ALS threshold in PS function */
-		printk("light sensor report lux =%d cdata = %d irdata = %d, pdata= %d\n",LUX,cdata,irdata, pdata);
+		DEBUG_MSG("light sensor report lux =%d cdata = %d irdata = %d, pdata= %d\n",LUX,cdata,irdata, pdata);
 		return;
 	}
 	
@@ -1117,7 +1117,7 @@ void apds_9900_als_handler(struct apds9900_data *data)
 	apds9900_set_ailt(apds_9900_i2c_client, LTH);
 	apds9900_set_aiht(apds_9900_i2c_client, HTH);
 
-	printk("light sensor report lux =%d cdata = %d irdata = %d, pdata= %d\n",LUX,cdata,irdata, pdata);
+	DEBUG_MSG("light sensor report lux =%d cdata = %d irdata = %d, pdata= %d\n",LUX,cdata,irdata, pdata);
 }
 
 
@@ -1130,7 +1130,7 @@ void apds_9900_irq_work_func(struct work_struct *work)
 
 	status = i2c_smbus_read_byte_data(apds_9900_i2c_client, CMD_BYTE|APDS9900_STATUS_REG);
 
-	printk("apds_9900_irq_work_func status =[%x][%d]\n", status, data->ps_detection);
+	DEBUG_MSG("apds_9900_irq_work_func status =[%x][%d]\n", status, data->ps_detection);
 
 	if(status & APDS9900_STATUS_PINT) 
 	{
@@ -1323,7 +1323,7 @@ static int apds9900_suspend(struct i2c_client *client, pm_message_t mesg)
 	struct apds9900_data *data = i2c_get_clientdata(apds_9900_i2c_client);	
 	int gpiovalue = gpio_get_value(16);
 
-	printk("apds9900_suspend [%d][%d]\n", data->enable, gpiovalue);
+	DEBUG_MSG("apds9900_suspend [%d][%d]\n", data->enable, gpiovalue);
 
 	if(data->enable & APDS9900_ENABLE_PIEN)
 	{
@@ -1335,7 +1335,7 @@ static int apds9900_suspend(struct i2c_client *client, pm_message_t mesg)
 
 static int apds9900_resume(struct i2c_client *client)
 {
-	printk("apds9900_resume [%d]\n",enable_status);
+	DEBUG_MSG("apds9900_resume [%d]\n",enable_status);
 
 	if(enable_status != 0)
 	{

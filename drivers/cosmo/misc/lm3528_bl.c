@@ -6,7 +6,7 @@
 #include <mach/lm3528.h>
 
 
-#define LM3528_DEBUG 1
+#define LM3528_DEBUG 0
  #if LM3528_DEBUG
  #define DEBUG_MSG(args...)  printk(args)
  #else
