@@ -358,6 +358,8 @@ restore_state:
 		omap_uart_resume_idle(3);
 	}
 
+        omap_hsi_wakeup();
+
 	if (core_next_state < PWRDM_POWER_INACTIVE) {
 
 		if (!omap4_device_off_read_next_state()) {
@@ -405,9 +407,11 @@ static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 		omap_writel(0x2, 0x4A009550);
 		omap_writel(0xD, 0x48020054);
 
+#if defined(CONFIG_OMAP_HSI)
 		/* Modem HSI wakeup */
 		if (omap_hsi_is_io_wakeup_from_hsi())
 			omap_hsi_wakeup();
+#endif
 
 		/* usbhs remote wakeup */
 		usbhs_wakeup();
@@ -614,8 +618,10 @@ static int omap4_pm_suspend(void)
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_GPT1);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_PRCM);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_SYS_1N);
+#if defined(CONFIG_OMAP_HSI)
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_P1);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_DMA);
+#endif
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_EMIF4_1);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_EMIF4_2);
 
