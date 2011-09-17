@@ -219,47 +219,22 @@ int omap_hsi_prepare_idle(void)
 	return 0;
 }
 
-/**
-* omap_hsi_is_io_wakeup_from_hsi - Indicates an IO wakeup from HSI CAWAKE
-*
-* Return value :* 0 if CAWAKE Padconf has not been found or no IOWAKEUP event
-*		occured for CAWAKE
-*		* else 1
-*/
-int omap_hsi_is_io_wakeup_from_hsi(void)
-{
-	u16 val;
-
-	/* Check for IO pad wakeup */
-	val = omap_mux_read_signal(OMAP_HSI_PADCONF_CAWAKE_PIN);
-	if (val == -ENODEV)
-		return 0;
-
-	/* Continue only if CAWAKE is muxed */
-	if ((val & OMAP_MUX_MODE_MASK) != OMAP_HSI_PADCONF_CAWAKE_MODE)
-		return 0;
-
-	if (val & OMAP44XX_PADCONF_WAKEUPEVENT0)
-		return 1;
-
-	return 0;
-}
 
 /**
-* omap_hsi_wakeup - Prepare HSI for wakeup from suspend mode (RET/OFF)
+* omap_hsi_resume_idle - Prepare HSI for wakeup from low power
 *
 * Return value :* -ENODEV if HSI platform device or HSI controller or CAWAKE
 *		  Padconf has not been found
 *		* -EPERM if HSI is not allowed to wakeup the platform.
 *		* else 0.
+*
 */
-int omap_hsi_wakeup(void)
+int omap_hsi_resume_idle(void)
 {
 	struct platform_device *pdev;
 	struct hsi_dev *hsi_ctrl;
+	u16 val;
 
-	/* TODO: optimize and call this only once, then store and use result
-	 * for subsequent accesses */
 	pdev = hsi_get_hsi_platform_device();
 	if (!pdev)
 		return -ENODEV;
@@ -270,15 +245,24 @@ int omap_hsi_wakeup(void)
 	if (!hsi_ctrl)
 		return -ENODEV;
 
-	dev_info(hsi_ctrl->dev, "Modem wakeup detected from HSI CAWAKE Pad");
+	/* Check for IO pad wakeup */
+	val = omap_mux_read_signal(OMAP_HSI_PADCONF_CAWAKE_PIN);
 
-	/* CAWAKE falling or rising edge detected */
-	hsi_ctrl->hsi_port->cawake_off_event = true;
-	tasklet_hi_schedule(&hsi_ctrl->hsi_port->hsi_tasklet);
+	if (val == -ENODEV)
+		return val;
 
-	/* Disable interrupt until Bottom Half has cleared */
-	/* the IRQ status register */
-	disable_irq_nosync(hsi_ctrl->hsi_port->irq);
+	if (val & OMAP44XX_PADCONF_WAKEUPEVENT0) {
+		dev_info(hsi_ctrl->dev, "Modem wakeup detected from HSI "
+					"PADCONF : 0x%04x\n", val);
+
+		/* CAWAKE falling or rising edge detected */
+		hsi_ctrl->hsi_port->cawake_off_event = true;
+		tasklet_hi_schedule(&hsi_ctrl->hsi_port->hsi_tasklet);
+
+		/* Disable interrupt until Bottom Half has cleared */
+		/* the IRQ status register */
+		disable_irq_nosync(hsi_ctrl->hsi_port->irq);
+	}
 
 	return 0;
 }

@@ -208,10 +208,6 @@ void __init gic_init_irq(void)
 #ifdef CONFIG_CACHE_L2X0
 static int __init omap_l2_cache_init(void)
 {
-	u32 l2x0_auxctrl;
-	u32 l2x0_por;
-	u32 l2x0_lockdown;
-
 	/*
 	 * To avoid code running on other OMAPs in
 	 * multi-omap builds
@@ -223,52 +219,16 @@ static int __init omap_l2_cache_init(void)
 	l2cache_base = ioremap(OMAP44XX_L2CACHE_BASE, SZ_4K);
 	BUG_ON(!l2cache_base);
 
-	if (omap_rev() == OMAP4430_REV_ES1_0) {
-		l2x0_auxctrl = OMAP443X_L2X0_AUXCTL_VALUE_ES1;
-		goto skip_auxctlr;
-	}
-
-	if (cpu_is_omap446x()) {
-		if (omap_rev() == OMAP4460_REV_ES1_0) {
-			l2x0_auxctrl = OMAP446X_L2X0_AUXCTL_VALUE_ES1;
-			l2x0_por = OMAP446X_PL310_POR_ES1;
-			l2x0_lockdown = 0xa5a5;
-		} else {
-			l2x0_auxctrl = OMAP446X_L2X0_AUXCTL_VALUE;
-			l2x0_por = OMAP446X_PL310_POR;
-			l2x0_lockdown = 0;
-		}
-	} else {
-		l2x0_auxctrl = OMAP443X_L2X0_AUXCTL_VALUE;
-		l2x0_por = OMAP443X_PL310_POR;
-		l2x0_lockdown = 0;
-	}
-
-	/* Set POR through PPA service only in EMU/HS devices */
-	if (omap_type() != OMAP2_DEVICE_TYPE_GP) {
-		omap4_secure_dispatcher(
+	if (omap_rev() != OMAP4430_REV_ES1_0) {
+		/* Set POR through PPA service only in EMU/HS devices */
+		if (omap_type() != OMAP2_DEVICE_TYPE_GP)
+			omap4_secure_dispatcher(
 				PPA_SERVICE_PL310_POR, 0x7, 1,
-				l2x0_por, 0, 0, 0);
-	} else if (omap_rev() > OMAP4430_REV_ES2_1)
-			omap_smc1(0x113, l2x0_por);
+				PL310_POR, 0, 0, 0);
 
-	/*
-	 * FIXME : Temporary WA for the OMAP4460 stability
-	 * issue. For OMAP4460 the effective L2X0 Size  = 512 KB
-	 * with this WA.
-	 */
-	writel_relaxed(l2x0_lockdown, l2cache_base + 0x900);
-	writel_relaxed(l2x0_lockdown, l2cache_base + 0x908);
-	writel_relaxed(l2x0_lockdown, l2cache_base + 0x904);
-	writel_relaxed(l2x0_lockdown, l2cache_base + 0x90C);
+		omap_smc1(0x109, OMAP4_L2X0_AUXCTL_VALUE);
+	}
 
-	/*
-	 * Doble Linefill, BRESP enabled, $I and $D prefetch ON,
-	 * Share-override = 1, NS lockdown enabled
-	 */
-	omap_smc1(0x109, l2x0_auxctrl);
-
-skip_auxctlr:
 	/* Enable PL310 L2 Cache controller */
 	omap_smc1(0x102, 0x1);
 
@@ -276,7 +236,10 @@ skip_auxctlr:
 	 * 32KB way size, 16-way associativity,
 	 * parity disabled
 	 */
-	l2x0_init(l2cache_base, l2x0_auxctrl, 0xd0000fff);
+	if (omap_rev() == OMAP4430_REV_ES1_0)
+		l2x0_init(l2cache_base, 0x0e050000, 0xc0000fff);
+	else
+		l2x0_init(l2cache_base, OMAP4_L2X0_AUXCTL_VALUE, 0xd0000fff);
 
 	return 0;
 }

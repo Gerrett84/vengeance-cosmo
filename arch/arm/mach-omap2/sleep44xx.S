@@ -29,23 +29,9 @@
 #define CACHE_DISABLE_MASK			0xFFFFE7FB
 #define SCU_CLEAR_STATE				0xFCFC
 #define SRAM_VADDR                             (OMAP2_L4_IO_OFFSET + \
-						 OMAP44XX_SAR_RAM_BASE)
+						OMAP44XX_SAR_RAM_BASE)
 
-/*
- * Macro to check cpu omap
- */
-.macro CPU_REV_CMP a
-	mrc	p15, 0, r0, c0, c0, 0
-	and	r0, #0xf
-	cmp	r0, \a
-.endm
 
-.macro CPU_MINOR_REV_CMP a
-	ldr	r1, =OMAP443X_SCM_BASE
-	ldr	r0, [r1, #0x204]
-	lsr	r0, #28
-	cmp	r0, \a
-.endm
 
 /*
  * Macro to call PPA svc when MMU is OFF
@@ -76,13 +62,7 @@ zero_params:
 .word 0
 
 POR_params:
-.word 1, OMAP443X_PL310_POR
-
-POR_4460es10_params:
-.word 1, OMAP446X_PL310_POR_ES1
-
-POR_4460_params:
-.word 1, OMAP446X_PL310_POR
+.word 1, 5
 
 /*
  * CPUx Wakeup Non-Secure Physical Address for
@@ -120,7 +100,6 @@ restore_context:
 	LM_CHECK_IF_CPU0
 	beq	enable_smp_bit				@ if CPU0
 
-#ifdef CONFIG_CACHE_L2X0
 	/*
 	 *     Check the WakeUp CPU
 	 * CPU1 must check if CPU0 is alive/awaken;
@@ -143,7 +122,6 @@ restore_context:
 	wfi				@ wait for interrupt
 	nop
 	nop
-#endif
 set_ns_smp_access:
 	mcr	p15, 0, r7, c7, c5, 6	@ invalidate BPIALL
 	isb
@@ -159,6 +137,7 @@ enable_smp_bit:
 	isb
 skip_enable_smp_bit:			@ GP device should execute from here
 #ifdef CONFIG_CACHE_L2X0
+	/* FIXME : Add POR register restore as well */
 	ldr	r2, =OMAP44XX_L2CACHE_BASE
 	ldr	r0, [r2, #L2X0_CTRL]
 	and	r0, #0x0f
@@ -169,64 +148,24 @@ skip_enable_smp_bit:			@ GP device should execute from here
 	ldr	r1, =A9_ES1_REV
 	cmp	r0, r1
 	bne	check_por
-	ldr	r0, =OMAP443X_L2X0_AUXCTL_VALUE_ES1
+	ldr	r0, =OMAP4_L2X0_AUXCTL_VALUE_ES1
 	ldr     r12, =0x109		@ Setup L2 AUXCTL value
 	dsb
 	smc     #0
 	b	skip_l2en
 check_por:
-	CPU_REV_CMP #0xa	@Check for 4460 family
-	itt	lt
-	adrlt	r3, POR_params
-	blt	check_dev_type
-	CPU_MINOR_REV_CMP #0x0	@Check for ES1.0
-	ite	eq
-	adreq	r3, POR_4460es10_params
-	adrgt	r3, POR_4460_params
-check_dev_type:
 	ldr	r0, =OMAP44XX_SAR_RAM_BASE  @ Check DEVICE type
 	ldr	r1, [r0, #OMAP_TYPE_OFFSET]
-	cmp	r1, #0x1	@Check for HS device
-	bne	por_setup_gp
-por_setup_emu:
+	cmp	r1, #0x1                   @ Check for HS device
+	bne	skip_por
 	ldr	r0, =PPA_SERVICE_PL310_POR @ Setup PPA HAL call
+	adr	r3, POR_params
 	LM_CALL_PPA_SERVICE_PA
-	b	skip_por
-por_setup_gp:
-	adr	r4, POR_params
-	cmp	r3, r4
-	bne	smc_call
-	CPU_MINOR_REV_CMP #0x4	@Check for ES2.2
-	blt	skip_por
-smc_call:
-	ldr	r0, [r3, #0x4]
-	ldr	r12, =0x113	@Setup POR value
-	dsb
-	smc	#0
 skip_por:
-	CPU_REV_CMP #0xa	@Check for 4460 family
-	itt	lt
-	ldrlt	r0, =OMAP443X_L2X0_AUXCTL_VALUE
-	blt	auxctl_setup
-	CPU_MINOR_REV_CMP #0x0	@Check for ES1.0
-	ite	eq
-	ldreq	r0, =OMAP446X_L2X0_AUXCTL_VALUE_ES1
-	ldrgt	r0, =OMAP446X_L2X0_AUXCTL_VALUE
-auxctl_setup:
+	ldr	r0, =OMAP4_L2X0_AUXCTL_VALUE
 	ldr     r12, =0x109		@ Setup L2 AUXCTL value
 	dsb
 	smc     #0
-	/*
-	 * Restore the L2X0 lockdown registers before enabling L2X0.
-	 * OMAP4430 restore values will be 0x0
-	 */
-	ldr	r2, =OMAP44XX_L2CACHE_BASE
-	ldr	r4, =OMAP44XX_SAR_RAM_BASE
-	ldr	r9, [r4, #L2X0_LOCKDOWN_OFFSET0]
-	str	r9, [r2, #0x900]
-	str	r9, [r2, #0x904]
-	str	r9, [r2, #0x908]
-	str	r9, [r2, #0x90c]
 	mov     r0, #0x1
 	ldr     r12, =0x102		@ Enable L2 Cache controller
 	dsb
@@ -397,6 +336,7 @@ clean_inv_l1:				@ cache-v7.S routine used here
 	str	r3, [r2, #0x08]
 	b	l2x_clean_inv
 clean_inv_l1_hs:
+
 	stmfd   r13!, {r4-r12, r14}
 	mov     r0, #0x00		@ Keep CPU in ON state
 	mov     r1, #0xFF		@ Clean Secure L1
@@ -451,12 +391,6 @@ l2x_clean_inv:				@ Only for MPU OFF and last CPU
 	ldr	r0, [r8, #L2X0_OFFSET]
 	cmp	r0, #3
 	bne	do_WFI
-#ifdef CONFIG_PL310_ERRATA_727915
-	mov 	r0, #0x03
-	mov	r12, #0x100
-	dsb
-	smc	#0
-#endif
 	ldr	r2, =l2cache_base
 	ldr	r2, [r2]
 	ldr	r0, =0xffff
@@ -468,29 +402,23 @@ loop4:
 #endif
 
 do_WFI:
-	dsb				@ Necessary barriers before wfi
+	dsb                             @ Necessary barriers before wfi
 	dmb
 	isb
 
 #ifdef CONFIG_CACHE_L2X0
 l2x_sync:
-	ldr	r2, =l2cache_base
-	ldr	r2, [r2]
+	ldr     r2, =l2cache_base
+	ldr     r2, [r2]
 	mov	r0, #0x0
 	str	r0, [r2, #L2X0_CACHE_SYNC]
 loop5:
 	ldr	r0, [r2, #L2X0_CACHE_SYNC]
 	ands	r0, r0, #0x1
 	bne	loop5
-#ifdef CONFIG_PL310_ERRATA_727915
-	mov 	r0, #0x00
-	mov	r12, #0x100
-	dsb
-	smc	#0
-#endif
 #endif
 	ldr     r0, =so_ram_address
-	ldr	r0, [r0]
+	ldr     r0, [r0]
 	ldr     r2, [r0]
 	str     r2, [r0]
 
@@ -561,20 +489,33 @@ END(__omap4_cpu_suspend)
 
 /* Function to flush pl310 and SO write */
 ENTRY(DO_WFI)
-	stmfd	sp!, {lr}	@ save registers on stack
+	stmfd   sp!, {lr}       @ save registers on stack
 
-	dsb			@ Necessary barriers before wfi
+	dsb                     @ Necessary barriers before wfi
 	dmb
 	isb
 
-	ldr	r0, =so_ram_address
-	ldr	r0, [r0]
-	ldr	r2, [r0]
-	str	r2, [r0]
+#ifdef CONFIG_CACHE_L2X0
 
-	ldr	r0, =SRAM_VADDR
-	ldr	r2, [r0]
-	str	r2, [r0]
+	ldr     r2, =l2cache_base
+	ldr     r2, [r2]
+	mov     r0, #0x0
+	str     r0, [r2, #L2X0_CACHE_SYNC]
+
+loop51:
+	ldr     r0, [r2, #L2X0_CACHE_SYNC]
+	ands    r0, r0, #0x1
+	bne     loop51
+#endif
+
+	ldr     r0, =so_ram_address
+	ldr     r0, [r0]
+	ldr     r2, [r0]
+	str     r2, [r0]
+
+	ldr     r0, =SRAM_VADDR
+	ldr     r2, [r0]
+	str     r2, [r0]
 
 	dsb
 
@@ -597,7 +538,7 @@ ENTRY(DO_WFI)
 	nop
 	nop
 
-	ldmfd   sp!, {pc}	@ restore regs and return
+	ldmfd   sp!, {pc}       @ restore regs and return
 
 END(DO_WFI)
 

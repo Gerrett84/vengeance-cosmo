@@ -17,6 +17,7 @@
 #include <mach/omap4-common.h>
 #include <mach/omap4-wakeupgen.h>
 #include <asm/hardware/cache-l2x0.h>
+
 #include "pm.h"
 #include "prm.h"
 #include "pm.h"

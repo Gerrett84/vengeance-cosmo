@@ -218,7 +218,7 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 	core_next_state = pwrdm_read_next_pwrst(core_pwrdm);
 	mpu_next_state = pwrdm_read_next_pwrst(mpu_pwrdm);
 
-	if (mpu_next_state < PWRDM_POWER_INACTIVE) {
+	if (mpu_next_state < PWRDM_POWER_ON) {
 		/* Disable SR for MPU VDD */
 		omap_smartreflex_disable(vdd_mpu);
 		/* Enable AUTO RET for mpu */
@@ -237,29 +237,22 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 		 * for now. Needs a relook to see if this can be
 		 * optimized.
 		 */
+		/* Disable SR for CORE and IVA VDD*/
+		omap_smartreflex_disable(vdd_iva);
+		omap_smartreflex_disable(vdd_core);
 
+	
+	 if (omap4_device_off_read_next_state()) {
 		omap_uart_prepare_idle(0);
 		omap_uart_prepare_idle(1);
 		omap_uart_prepare_idle(2);
 		omap_uart_prepare_idle(3);
-
-		if (omap4_device_off_read_next_state()) {
-			omap2_gpio_prepare_for_idle(1);
-			/* Extend Non-EMIF I/O isolation */
-			prm_rmw_mod_reg_bits(OMAP4430_ISOOVR_EXTEND_MASK,
-				OMAP4430_ISOOVR_EXTEND_MASK,
-				OMAP4430_PRM_DEVICE_MOD,
-				OMAP4_PRM_IO_PMCTRL_OFFSET);
-		}
-		else
-			omap2_gpio_prepare_for_idle(0);
-
-		omap4_trigger_ioctrl();
+		omap2_gpio_prepare_for_idle(0);
 	}
-	if (core_next_state < PWRDM_POWER_INACTIVE) {
-		/* Disable SR for CORE and IVA VDD*/
-		omap_smartreflex_disable(vdd_iva);
-		omap_smartreflex_disable(vdd_core);
+
+  if (omap4_device_off_read_next_state())
+   omap2_dma_context_save();
+		omap4_trigger_ioctrl();
 
 		if (!omap4_device_off_read_next_state()) {
 			/* Enable AUTO RET for IVA and CORE */
@@ -269,9 +262,8 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 			prm_rmw_mod_reg_bits(OMAP4430_AUTO_CTRL_VDD_CORE_L_MASK,
 			0x2 << OMAP4430_AUTO_CTRL_VDD_CORE_L_SHIFT,
 			OMAP4430_PRM_DEVICE_MOD, OMAP4_PRM_VOLTCTRL_OFFSET);
-			}
+		}
 	}
-
 
 	/* FIXME  This call is not needed now for retention support and global
 	 * suspend resume support. All the required actions are taken based
@@ -279,41 +271,11 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 	 * This call will be required for offmode support to save and restore
 	 * context in the idle path oddmode support only.
 	*/
-#if 0
-	if (core_next_state < PWRDM_POWER_ON)
-		musb_context_save_restore(disable_clk);
-#endif
 	if (omap4_device_off_read_next_state()) {
 		omap4_prcm_prepare_off();
 		/* Save the device context to SAR RAM */
-		if (omap4_sar_save())
-			goto restore_state;
+		omap4_sar_save();
 		omap4_sar_overwrite();
-
-		/* Workaround for IVA AUTO RETENTION issue in OFF mode.
-		Present configuration lets IVA VD to transition from RET->OFF or ON->OFF
-		depending on the selected low power state. Disabling the AUTO_RETENTION
-		control for IVA voltage domain throughout so that PRCM voltage manager
-		state machine will never hit RETENTION state for IVA. During OFF mode
-		entry, IVA voltage domain will directly transition from ON -> OFF state */
-
-		cm_rmw_mod_reg_bits(OMAP4430_CLKTRCTRL_MASK,
-				OMAP34XX_CLKSTCTRL_FORCE_WAKEUP << OMAP4430_CLKTRCTRL_SHIFT,
-				OMAP4430_CM2_IVAHD_MOD,
-				OMAP4_CM_IVAHD_CLKSTCTRL_OFFSET);
-		udelay(100);
-
-		/* disable AUTO RET for IVA */
-		prm_rmw_mod_reg_bits(OMAP4430_AUTO_CTRL_VDD_IVA_L_MASK,
-				0x0 << OMAP4430_AUTO_CTRL_VDD_IVA_L_SHIFT,
-				OMAP4430_PRM_DEVICE_MOD,
-				OMAP4_PRM_VOLTCTRL_OFFSET);
-
-		cm_rmw_mod_reg_bits(OMAP4430_CLKTRCTRL_MASK,
-				OMAP34XX_CLKSTCTRL_FORCE_SLEEP << OMAP4430_CLKTRCTRL_SHIFT,
-				OMAP4430_CM2_IVAHD_MOD,
-				OMAP4_CM_IVAHD_CLKSTCTRL_OFFSET);
-		udelay(100);
 	}
 
 	omap4_enter_lowpower(cpu, power_state);
@@ -325,7 +287,6 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state)
 #endif
 	}
 
-restore_state:
 
 	/* FIXME  This call is not needed now for retention support and global
 	 * suspend resume support. All the required actions are taken based
@@ -333,37 +294,10 @@ restore_state:
 	 * This call will be required for offmode support to save and restore
 	 * context in the idle path oddmode support only.
 	*/
-#if 0
-	if (core_next_state < PWRDM_POWER_ON)
-		musb_context_save_restore(enable_clk);
-
-#endif
 
 	if (core_next_state < PWRDM_POWER_ON) {
-
-		if (omap4_device_off_read_prev_state())
-			omap2_gpio_resume_after_idle(1);
-		else
-			omap2_gpio_resume_after_idle(0);
-
-		if (omap4_device_off_read_next_state())
-			/* Disable the extention of Non-EMIF I/O isolation */
-			prm_rmw_mod_reg_bits(OMAP4430_ISOOVR_EXTEND_MASK, 0x0,
-				OMAP4430_PRM_DEVICE_MOD,
-				OMAP4_PRM_IO_PMCTRL_OFFSET);
-
-		omap_uart_resume_idle(0);
-		omap_uart_resume_idle(1);
-		omap_uart_resume_idle(2);
-		omap_uart_resume_idle(3);
-	}
-
-        omap_hsi_wakeup();
-
-	if (core_next_state < PWRDM_POWER_INACTIVE) {
-
 		if (!omap4_device_off_read_next_state()) {
-				/* Disable AUTO RET for IVA and CORE */
+			/* Disable AUTO RET for IVA and CORE */
 			prm_rmw_mod_reg_bits(OMAP4430_AUTO_CTRL_VDD_IVA_L_MASK,
 			0x0,
 			OMAP4430_PRM_DEVICE_MOD, OMAP4_PRM_VOLTCTRL_OFFSET);
@@ -372,13 +306,29 @@ restore_state:
 			OMAP4430_PRM_DEVICE_MOD, OMAP4_PRM_VOLTCTRL_OFFSET);
 		}
 
+
+
+	
+	 if (omap4_device_off_read_next_state()){
+		omap2_gpio_resume_after_idle(0);
+		omap_uart_resume_idle(0);
+		omap_uart_resume_idle(1);
+		omap_uart_resume_idle(2);
+		omap_uart_resume_idle(3);
+	}
+  if (omap4_device_off_read_next_state())
+   omap2_dma_context_restore();
+		
+		
+		omap_hsi_resume_idle();
+		
+
 		/* Enable SR for IVA and CORE */
 		omap_smartreflex_enable(vdd_iva);
 		omap_smartreflex_enable(vdd_core);
 	}
 
-
-	if (mpu_next_state < PWRDM_POWER_INACTIVE) {
+	if (mpu_next_state < PWRDM_POWER_ON) {
 		if (!omap4_device_off_read_next_state())
 			/* Disable AUTO RET for mpu */
 			prm_rmw_mod_reg_bits(OMAP4430_AUTO_CTRL_VDD_MPU_L_MASK,
@@ -406,12 +356,6 @@ static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 		/* Re-enable UART3 */
 		omap_writel(0x2, 0x4A009550);
 		omap_writel(0xD, 0x48020054);
-
-#if defined(CONFIG_OMAP_HSI)
-		/* Modem HSI wakeup */
-		if (omap_hsi_is_io_wakeup_from_hsi())
-			omap_hsi_wakeup();
-#endif
 
 		/* usbhs remote wakeup */
 		usbhs_wakeup();
@@ -575,6 +519,8 @@ static void Cosmo_padconf_save()
 }
 
 
+int offmode_enter=0;
+
 int mpu_m3_clkctrl =0;
 int mpu_m3_clkctrl_count = 0;
 static int omap4_pm_suspend(void)
@@ -609,7 +555,7 @@ static int omap4_pm_suspend(void)
 
 	/*
 	 * Clear all wakeup sources and keep
-	 * only Debug UART, Keypad, HSI(CAWAKE+DMA) and GPT1 interrupt
+	 * only Debug UART, Keypad, HSI and GPT1 interrupt
 	 * as a wakeup event from MPU/Device OFF
 	 */
 	omap4_wakeupgen_clear_all(cpu_id);
@@ -618,12 +564,10 @@ static int omap4_pm_suspend(void)
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_GPT1);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_PRCM);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_SYS_1N);
+
 #if defined(CONFIG_OMAP_HSI)
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_P1);
-	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_HSI_DMA);
 #endif
-	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_EMIF4_1);
-	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_EMIF4_2);
 
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_GPIO4);
 	omap4_wakeupgen_set_interrupt(cpu_id, OMAP44XX_IRQ_SYS_2N);
@@ -668,28 +612,21 @@ static int omap4_pm_suspend(void)
 		}
 	}
 
-	/*
-	 * To Ensure that we don't attempt suspend when CPU1 is
-	 * not in OFF state to avoid un-supported H/W mode
-	 */
-	cpu1_state = pwrdm_read_pwrst(cpu1_pwrdm);
-	if (cpu1_state != PWRDM_POWER_OFF)
-		goto restore;
-
 	omap_uart_prepare_suspend();
 	
 	omap_hsi_prepare_suspend(); 
 	
 
+	offmode_enter=1;
 	/* Enable Device OFF */
-	if (enable_off_mode && volt_off_mode)
+	if (enable_off_mode)
 		omap4_device_off_set_state(1);
 
 
 	omap4_enter_sleep(0, PWRDM_POWER_OFF);
 
 	/* Disable Device OFF state*/
-	if (enable_off_mode && volt_off_mode)
+	if (enable_off_mode)
 		omap4_device_off_set_state(0);
 
 	printk("count=%d, pre_mpu_m3_clkctrl=0x%x, CM_MPU_M3_MPU_M3_CLKCTRL: 0x%x\n", mpu_m3_clkctrl_count, mpu_m3_clkctrl, omap_readl(0x4A008920));
@@ -809,13 +746,7 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	if (!pwrst)
 		return -ENOMEM;
 	pwrst->pwrdm = pwrdm;
-	if ((!strcmp(pwrdm->name, mpu_pwrdm->name)) ||
-			(!strcmp(pwrdm->name, core_pwrdm->name)) ||
-			(!strcmp(pwrdm->name, cpu0_pwrdm->name)) ||
-			(!strcmp(pwrdm->name, cpu1_pwrdm->name)))
-		pwrst->next_state = PWRDM_POWER_ON;
-	else
-		pwrst->next_state = PWRDM_POWER_RET;
+	pwrst->next_state = PWRDM_POWER_RET;
 	list_add(&pwrst->node, &pwrst_list);
 
 	return omap4_set_pwrdm_state(pwrst->pwrdm, pwrst->next_state);
@@ -979,32 +910,24 @@ static void __init prcm_clear_statdep_regs(void)
 
 	pr_info("%s: Clearing static depndencies\n", __func__);
 
-#if 0
 	/*
-	 * REVISIT: Seen SGX issues with MPU -> EMIF. Keeping
+	 * REVISIT: Seen issue with MPU/DSP -> L3_2 and L4CFG. Keeping
 	 * it enabled.
-	 * REVISIT: Seen issue with MPU/DSP -> L3_2 and L4CFG. 
-	 * Keeping them enabled
 	 */
-	/* MPU towards EMIF clockdomains */
-	reg = OMAP4430_MEMIF_STATDEP_MASK;
-	cm_rmw_mod_reg_bits(reg, 0, OMAP4430_CM1_MPU_MOD,
-		OMAP4_CM_MPU_STATICDEP_OFFSET);
-#endif
-
+	/* MPU towards EMIF, L3_2 and L4CFG clockdomains */
 	 /*
 	  * REVISIT: Issue seen with Ducati towards EMIF, L3_2, L3_1,
 	  * L4CFG and L4WKUP static
 	  * dependency. Keep it enabled as of now.
 	  */
-#if 0
+
+
 	/* Ducati towards EMIF, L3_2, L3_1, L4CFG and L4WKUP clockdomains */
 	reg = OMAP4430_MEMIF_STATDEP_MASK | OMAP4430_L3_1_STATDEP_MASK
 		| OMAP4430_L3_2_STATDEP_MASK | OMAP4430_L4CFG_STATDEP_MASK
 		| OMAP4430_L4WKUP_STATDEP_MASK;
 	cm_rmw_mod_reg_bits(reg, 0, OMAP4430_CM2_CORE_MOD,
 		OMAP4_CM_DUCATI_STATICDEP_OFFSET);
-#endif
 
 	/* SDMA towards EMIF, L3_2, L3_1, L4CFG, L4WKUP, L3INIT
 	 * and L4PER clockdomains
@@ -1047,24 +970,7 @@ static int __init omap4_pm_init(void)
 	if (!cpu_is_omap44xx())
 		return -ENODEV;
 
-	/*
-	 * Keep volt/device off disabled by default
-	 * on 446x.
-	 */
-	if (cpu_is_omap446x())
-		volt_off_mode = 0;
-	else
-		volt_off_mode = 1;
-
-	enable_off_mode = 0;
-
 	pr_err("Power Management for TI OMAP4.\n");
-	mpu_pwrdm = pwrdm_lookup("mpu_pwrdm");
-	cpu0_pwrdm = pwrdm_lookup("cpu0_pwrdm");
-	cpu1_pwrdm = pwrdm_lookup("cpu1_pwrdm");
-	core_pwrdm = pwrdm_lookup("core_pwrdm");
-	per_pwrdm = pwrdm_lookup("l4per_pwrdm");
-
 
 
 #ifdef CONFIG_PM
@@ -1122,13 +1028,15 @@ static int __init omap4_pm_init(void)
 	}
 
 	omap4_mpuss_init();
-	omap4_pm_off_mode_enable(enable_off_mode);
 #endif
 
 #ifdef CONFIG_SUSPEND
 	suspend_set_ops(&omap_pm_ops);
 #endif /* CONFIG_SUSPEND */
 
+	cpu0_pwrdm = pwrdm_lookup("cpu0_pwrdm");
+	core_pwrdm = pwrdm_lookup("core_pwrdm");
+	per_pwrdm = pwrdm_lookup("l4per_pwrdm");
 	omap4_idle_init();
 	omap4_trigger_ioctrl();
 
