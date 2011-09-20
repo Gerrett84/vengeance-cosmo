@@ -79,6 +79,7 @@ static struct musb_hdrc_config musb_config = {
 static char device_serial[MAX_USB_SERIAL_NUM];
 
 static char *usb_functions_ums[] = {
+	"acm",
 	"usb_mass_storage",
 };
 
@@ -87,6 +88,7 @@ static char *usb_functions_adb[] = {
 };
 
 static char *usb_functions_ums_adb[] = {
+	"acm",
 	"usb_mass_storage",
 	"adb",
 };
