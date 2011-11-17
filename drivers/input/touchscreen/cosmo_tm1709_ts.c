@@ -319,6 +319,7 @@ void report_virtual_key(struct input_dev *input_dev, int position, int state) {
                 virtual_down = 0;
                 input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, 0);
         }
+	input_report_key(input_dev, BTN_TOUCH, virtual_down);
         input_mt_sync(input_dev);
 
 #else
@@ -917,6 +918,7 @@ static int synaptics_handle_single_touch(struct synaptics_ts_data* ts, int finge
 			        		input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, curr_ts_data.Y_position[finger_index]);
 							input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, curr_ts_data.pressure[finger_index]);
 							input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR, curr_ts_data.width[finger_index]);
+							input_report_key(ts->input_dev, BTN_TOUCH, curr_ts_data.width[finger_index] ? 1 : 0);
 								
 							input_mt_sync(ts->input_dev);	
 							ret = synaptics_ts_is_more_pressed_touch(finger_index+1);
@@ -939,10 +941,11 @@ static int synaptics_handle_single_touch(struct synaptics_ts_data* ts, int finge
 			default: // common handling
 			
 					ret = synaptics_ts_is_more_pressed_touch(finger_index+1);
-		       		input_report_abs(ts->input_dev, ABS_MT_POSITION_X, curr_ts_data.X_position[finger_index]);
+		       			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, curr_ts_data.X_position[finger_index]);
 					input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, curr_ts_data.Y_position[finger_index]);	
 					input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, curr_ts_data.pressure[finger_index]);
 					input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR, curr_ts_data.width[finger_index]);
+					input_report_key(ts->input_dev, BTN_TOUCH, curr_ts_data.width[finger_index] ? 1 : 0);
 
 					input_mt_sync(ts->input_dev);
 
