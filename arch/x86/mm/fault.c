@@ -952,8 +952,10 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 	struct task_struct *tsk;
 	unsigned long address;
 	struct mm_struct *mm;
-	int write;
 	int fault;
+        int write = error_code & PF_WRITE;
+        unsigned int flags = FAULT_FLAG_ALLOW_RETRY |
+                (write ? FAULT_FLAG_WRITE : 0);
 
 	tsk = current;
 	mm = tsk->mm;
@@ -1064,6 +1066,7 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 			bad_area_nosemaphore(regs, error_code, address);
 			return;
 		}
+retry:
 		down_read(&mm->mmap_sem);
 	} else {
 		/*
@@ -1107,8 +1110,6 @@ do_page_fault(struct pt_regs *regs, unsigned long error_code)
 	 * we can handle it..
 	 */
 good_area:
-	write = error_code & PF_WRITE;
-
 	if (unlikely(access_error(error_code, write, vma))) {
 		bad_area_access_error(regs, error_code, address);
 		return;
@@ -1126,14 +1127,27 @@ good_area:
 		return;
 	}
 
-	if (fault & VM_FAULT_MAJOR) {
-		tsk->maj_flt++;
-		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1, 0,
-				     regs, address);
-	} else {
-		tsk->min_flt++;
-		perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1, 0,
-				     regs, address);
+        /*
+         * Major/minor page fault accounting is only done on the
+         * initial attempt. If we go through a retry, it is extremely
+         * likely that the page will be found in page cache at that point.
+         */
+        if (flags & FAULT_FLAG_ALLOW_RETRY) {
+          if (fault & VM_FAULT_MAJOR) {
+            tsk->maj_flt++;
+            perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1, 0,
+                    regs, address);
+          } else {
+            tsk->min_flt++;
+            perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1, 0,
+                    regs, address);
+          }
+          if (fault & VM_FAULT_RETRY) {
+            /* Clear FAULT_FLAG_ALLOW_RETRY to avoid any risk
+             * of starvation. */
+            flags &= ~FAULT_FLAG_ALLOW_RETRY;
+            goto retry;
+         }
 	}
 
 	check_v8086_mode(regs, address, tsk);
